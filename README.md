@@ -15,7 +15,7 @@ QuickTab is a native macOS window switcher built for fast, deterministic keyboar
 3. Open QuickTab from Applications.
 4. Grant access in **System Settings > Privacy & Security > Accessibility**, then relaunch QuickTab.
 
-The initial release is Developer ID-signed but not notarized. If macOS blocks the first launch, Control-click QuickTab in Applications, choose **Open**, then confirm **Open**.
+QuickTab is Developer ID-signed and notarized by Apple.
 
 ## Features
 

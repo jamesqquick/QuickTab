@@ -48,8 +48,9 @@ if [[ -n "${QUICKTAB_NOTARY_PROFILE:-}" ]]; then
     print -u2 "QUICKTAB_SIGN_IDENTITY is required for notarization"
     exit 1
   fi
-  NOTARY_ARCHIVE="$(mktemp "${TMPDIR:-/tmp}/QuickTab-notary.XXXXXX")"
-  trap 'rm -f "$NOTARY_ARCHIVE"' EXIT
+  NOTARY_DIR="$(mktemp -d "${TMPDIR:-/tmp}/QuickTab-notary.XXXXXX")"
+  NOTARY_ARCHIVE="$NOTARY_DIR/QuickTab.app.zip"
+  trap 'rm -rf "$NOTARY_DIR"' EXIT
   ditto -c -k --keepParent "$APP" "$NOTARY_ARCHIVE"
   xcrun notarytool submit "$NOTARY_ARCHIVE" --keychain-profile "$QUICKTAB_NOTARY_PROFILE" --wait
   xcrun stapler staple "$APP"
