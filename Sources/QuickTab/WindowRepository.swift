@@ -168,46 +168,52 @@ final class WindowRepository: ObservableObject {
 
     @discardableResult
     func perform(_ action: WindowAction, on item: WindowItem) -> Bool {
-        guard let app = NSRunningApplication(processIdentifier: item.processID) else { return false }
-        let succeeded: Bool
+        let reportedSuccess: Bool
         switch action {
         case .close:
             guard let element = item.element, let button: AXUIElement = Self.axValue(element, kAXCloseButtonAttribute) else {
                 return false
             }
-            succeeded = AXUIElementPerformAction(button, kAXPressAction as CFString) == .success
-            if succeeded {
-                suppressedWindows[item.id] = Date().addingTimeInterval(4)
-                windows.removeAll { $0.id == item.id }
-                itemCache[item.processID]?.removeAll { $0.id == item.id }
-                contextCache.removeValue(forKey: item.id)
-                lastActive.removeValue(forKey: item.id)
-            }
+            reportedSuccess = AXUIElementPerformAction(button, kAXPressAction as CFString) == .success
         case .minimize:
+            guard NSRunningApplication(processIdentifier: item.processID) != nil else { return false }
             guard let element = item.element else { return false }
-            succeeded = AXUIElementSetAttributeValue(
+            reportedSuccess = AXUIElementSetAttributeValue(
                 element,
                 kAXMinimizedAttribute as CFString,
                 kCFBooleanTrue
             ) == .success
         case .hideApplication:
-            succeeded = app.hide()
+            guard let app = NSRunningApplication(processIdentifier: item.processID) else { return false }
+            reportedSuccess = app.hide()
         case .quitApplication:
-            succeeded = app.terminate()
-            if succeeded {
-                suppressedProcesses[item.processID] = Date().addingTimeInterval(8)
-                windows.removeAll { $0.processID == item.processID }
-                itemCache.removeValue(forKey: item.processID)
-                contextCache = contextCache.filter { $0.key.processID != item.processID }
-                lastActive = lastActive.filter { $0.key.processID != item.processID }
-            }
+            guard let app = NSRunningApplication(processIdentifier: item.processID) else { return false }
+            reportedSuccess = app.terminate()
         }
-        if succeeded && (action == .close || action == .quitApplication) {
+        guard action.isAccepted(reportedSuccess: reportedSuccess) else { return false }
+
+        switch action {
+        case .close:
+            suppressedWindows[item.id] = Date().addingTimeInterval(4)
+            windows.removeAll { $0.id == item.id }
+            itemCache[item.processID]?.removeAll { $0.id == item.id }
+            contextCache.removeValue(forKey: item.id)
+            lastActive.removeValue(forKey: item.id)
+        case .quitApplication:
+            suppressedProcesses[item.processID] = Date().addingTimeInterval(8)
+            windows.removeAll { $0.processID == item.processID }
+            itemCache.removeValue(forKey: item.processID)
+            contextCache = contextCache.filter { $0.key.processID != item.processID }
+            lastActive = lastActive.filter { $0.key.processID != item.processID }
+        case .minimize, .hideApplication:
+            break
+        }
+        if action == .close || action == .quitApplication {
             refreshGeneration += 1
             refreshNotBefore = Date().addingTimeInterval(0.35)
         }
-        if succeeded { refreshAfterAction() }
-        return succeeded
+        refreshAfterAction()
+        return true
     }
 
     private func markActiveWindow(processID: pid_t) {

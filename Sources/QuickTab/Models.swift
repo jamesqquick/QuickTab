@@ -87,6 +87,15 @@ enum WindowAction: Equatable {
     case minimize
     case hideApplication
     case quitApplication
+
+    func isAccepted(reportedSuccess: Bool) -> Bool {
+        switch self {
+        case .close, .quitApplication:
+            true
+        case .minimize, .hideApplication:
+            reportedSuccess
+        }
+    }
 }
 
 enum WindowMetadata {
