@@ -1,0 +1,35 @@
+.github/workflows/ci.yml
+  s_a9741ebd9f4489::t_b01b844884bce4 1-19
+LICENSE
+  s_a9741ebd9f4489::t_ab294b0a5835fb 1-21
+Sources/QuickTab/Models.swift
+  s_d4e6b520326bd7::t_1b3c5ba6792113 1-171
+Sources/QuickTab/SwitcherPanel.swift
+  s_d4e6b520326bd7::t_bb1c968b22ba88 1-69
+Sources/QuickTab/WindowRepository.swift
+  s_d4e6b520326bd7::t_b3b209235c0afb 1-578
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "709390cfc4c8e9fc54d325febe13e2796da3cc13",
+  "prompts": {},
+  "sessions": {
+    "s_a9741ebd9f4489": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_fa23ee475ffe3d8zkPefr0hbRb",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "James Quick <jquick@cloudflare.com>"
+    },
+    "s_d4e6b520326bd7": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_fa2955db0ffeUEbKgW5dPuDZRC",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "James Quick <jquick@cloudflare.com>"
+    }
+  }
+}
