@@ -1,0 +1,19 @@
+.gitignore
+  s_f50e2f36488aa6::t_8fbce8db13ecbf 3
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "a5f83c804a6a80edbc386ef2c8072c97205d6d9b",
+  "prompts": {},
+  "sessions": {
+    "s_f50e2f36488aa6": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_fa1cd8ea4ffetZX5qau1745ura",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "James Quick <jquick@cloudflare.com>"
+    }
+  }
+}
