@@ -1,0 +1,377 @@
+import AppKit
+import CoreGraphics
+
+struct GlobalInputConfiguration {
+    var replaceCommandTab = true
+    var enableOptionTab = false
+    var enableFastSearch = true
+    var fastSearchModifier = FastSearchModifier.rightOption
+    var directTyping = true
+}
+
+@MainActor
+protocol GlobalInputHandler: AnyObject {
+    var isSwitcherVisible: Bool { get }
+    func presentSwitcher(mode: SwitcherMode, advanceImmediately: Bool)
+    func moveSwitcherSelection(by offset: Int)
+    func appendSwitcherQuery(_ text: String)
+    func beginSwitcherSearch()
+    func deleteSwitcherQueryCharacter()
+    func commitSwitcherSelection()
+    func dismissSwitcher()
+    func performSwitcherAction(_ action: WindowAction)
+    func pointerMoved(to point: CGPoint)
+    func edgeScrolled(delta: Double)
+}
+
+final class GlobalInputController {
+    weak var handler: GlobalInputHandler?
+    var configuration = GlobalInputConfiguration() {
+        didSet {
+            if !configuration.enableFastSearch {
+                fastModifierHeld = false
+                fastSearchActive = false
+            }
+        }
+    }
+
+    private var eventTap: CFMachPort?
+    private var runLoopSource: CFRunLoopSource?
+    private var cyclingModifier: CGEventFlags?
+    private var fastModifierHeld = false
+    private var fastSearchActive = false
+    private var pendingMousePoint: CGPoint?
+    private var mouseUpdateScheduled = false
+    private var edgeScrollAccumulator = 0.0
+    private var edgeGestureRecognized = false
+    private var lastEdgeScrollAt = Date.distantPast
+    private var presentationPending = false
+
+    var isInstalled: Bool { eventTap != nil }
+
+    func install() -> Bool {
+        if isInstalled { return true }
+        let types: [CGEventType] = [.keyDown, .keyUp, .flagsChanged, .mouseMoved, .scrollWheel]
+        let mask = types.reduce(CGEventMask(0)) { $0 | (CGEventMask(1) << $1.rawValue) }
+        guard let tap = CGEvent.tapCreate(
+            tap: .cgSessionEventTap,
+            place: .headInsertEventTap,
+            options: .defaultTap,
+            eventsOfInterest: mask,
+            callback: Self.eventCallback,
+            userInfo: Unmanaged.passUnretained(self).toOpaque()
+        ) else { return false }
+
+        eventTap = tap
+        let source = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, tap, 0)
+        runLoopSource = source
+        CFRunLoopAddSource(CFRunLoopGetMain(), source, .commonModes)
+        CGEvent.tapEnable(tap: tap, enable: true)
+        return true
+    }
+
+    func uninstall() {
+        if let eventTap { CGEvent.tapEnable(tap: eventTap, enable: false) }
+        if let runLoopSource { CFRunLoopRemoveSource(CFRunLoopGetMain(), runLoopSource, .commonModes) }
+        runLoopSource = nil
+        eventTap = nil
+        cyclingModifier = nil
+        fastModifierHeld = false
+        fastSearchActive = false
+        presentationPending = false
+    }
+
+    private static let eventCallback: CGEventTapCallBack = { _, type, event, userInfo in
+        guard let userInfo else { return Unmanaged.passUnretained(event) }
+        let controller = Unmanaged<GlobalInputController>.fromOpaque(userInfo).takeUnretainedValue()
+        return controller.handle(type: type, event: event) ? nil : Unmanaged.passUnretained(event)
+    }
+
+    func handle(type: CGEventType, event: CGEvent) -> Bool {
+        if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
+            if let eventTap { CGEvent.tapEnable(tap: eventTap, enable: true) }
+            return false
+        }
+
+        if type == .mouseMoved {
+            let location = NSEvent.mouseLocation
+            pendingMousePoint = location
+            if !mouseUpdateScheduled {
+                mouseUpdateScheduled = true
+                DispatchQueue.main.async { [weak self] in
+                    guard let self else { return }
+                    self.mouseUpdateScheduled = false
+                    guard let point = self.pendingMousePoint else { return }
+                    self.pendingMousePoint = nil
+                    self.handler?.pointerMoved(to: point)
+                }
+            }
+            return false
+        }
+
+        if type == .scrollWheel, isSwitcherVisible {
+            let delta = event.getDoubleValueField(.scrollWheelEventDeltaAxis1)
+            if abs(delta) >= 0.1 {
+                onMain { $0.moveSwitcherSelection(by: delta < 0 ? 1 : -1) }
+                return true
+            }
+            return false
+        }
+
+        if type == .scrollWheel {
+            let location = NSEvent.mouseLocation
+            let delta = event.getDoubleValueField(.scrollWheelEventDeltaAxis1)
+            if isAtOuterDisplayEdge(location), abs(delta) >= 0.1 {
+                let now = Date()
+                if now.timeIntervalSince(lastEdgeScrollAt) > 0.45 {
+                    edgeScrollAccumulator = 0
+                    edgeGestureRecognized = false
+                }
+                lastEdgeScrollAt = now
+                edgeScrollAccumulator += delta
+                if !edgeGestureRecognized, abs(edgeScrollAccumulator) >= 7 {
+                    edgeGestureRecognized = true
+                    onMain { $0.edgeScrolled(delta: self.edgeScrollAccumulator) }
+                } else if edgeGestureRecognized {
+                    onMain { $0.edgeScrolled(delta: delta) }
+                }
+                return edgeGestureRecognized
+            }
+            edgeScrollAccumulator = 0
+            edgeGestureRecognized = false
+            return false
+        }
+
+        let keyCode = UInt16(event.getIntegerValueField(.keyboardEventKeycode))
+        let flags = event.flags
+
+        if type == .flagsChanged {
+            if configuration.enableFastSearch,
+               keyCode == configuration.fastSearchModifier.keyCode {
+                let nowHeld = CGEventSource.keyState(
+                    .combinedSessionState,
+                    key: CGKeyCode(configuration.fastSearchModifier.keyCode)
+                )
+                if fastModifierHeld && !nowHeld && fastSearchActive {
+                    presentationPending = false
+                    onMain { $0.commitSwitcherSelection() }
+                    fastSearchActive = false
+                    fastModifierHeld = false
+                    return false
+                }
+                fastModifierHeld = nowHeld
+            }
+
+            if let cyclingModifier, !flags.contains(cyclingModifier) {
+                self.cyclingModifier = nil
+                presentationPending = false
+                onMain { $0.commitSwitcherSelection() }
+                return false
+            }
+            return false
+        }
+
+        if type == .keyUp {
+            return cyclingModifier != nil && (keyCode == KeyCode.tab || keyCode == KeyCode.grave)
+        }
+
+        guard type == .keyDown else { return false }
+
+        if configuration.enableFastSearch,
+           fastModifierHeld,
+           !flags.contains(.maskCommand),
+           let text = event.text,
+           text.rangeOfCharacter(from: .alphanumerics) != nil {
+            if !fastSearchActive {
+                fastSearchActive = true
+                presentSwitcher(mode: .fastSearch, advanceImmediately: false)
+            }
+            onMain { $0.appendSwitcherQuery(text) }
+            return true
+        }
+
+        let normalizedFlags = flags.intersection([.maskCommand, .maskAlternate, .maskControl, .maskShift])
+
+        if keyCode == KeyCode.space, normalizedFlags == .maskControl {
+            onMain { $0.presentSwitcher(mode: .search, advanceImmediately: false) }
+            return true
+        }
+
+        if keyCode == KeyCode.tab,
+           normalizedFlags == .maskCommand || normalizedFlags == [.maskCommand, .maskShift],
+           configuration.replaceCommandTab {
+            if !isSwitcherVisible {
+                cyclingModifier = .maskCommand
+                presentSwitcher(mode: .recent, advanceImmediately: true)
+            } else {
+                onMain { $0.moveSwitcherSelection(by: flags.contains(.maskShift) ? -1 : 1) }
+            }
+            return true
+        }
+
+        if keyCode == KeyCode.tab,
+           normalizedFlags == .maskAlternate || normalizedFlags == [.maskAlternate, .maskShift],
+           configuration.enableOptionTab,
+           (!configuration.enableFastSearch || !fastModifierHeld) {
+            if !isSwitcherVisible {
+                cyclingModifier = .maskAlternate
+                presentSwitcher(mode: .recent, advanceImmediately: true)
+            } else {
+                onMain { $0.moveSwitcherSelection(by: flags.contains(.maskShift) ? -1 : 1) }
+            }
+            return true
+        }
+
+        if keyCode == KeyCode.grave,
+           normalizedFlags == .maskCommand || normalizedFlags == [.maskCommand, .maskShift] {
+            if !isSwitcherVisible {
+                cyclingModifier = .maskCommand
+                let pid = NSWorkspace.shared.frontmostApplication?.processIdentifier ?? 0
+                presentSwitcher(mode: .application(pid), advanceImmediately: true)
+            } else {
+                onMain { $0.moveSwitcherSelection(by: flags.contains(.maskShift) ? -1 : 1) }
+            }
+            return true
+        }
+
+        guard isSwitcherVisible else { return false }
+
+        if keyCode == KeyCode.s,
+           cyclingModifier != nil,
+           normalizedFlags == .maskCommand || normalizedFlags == .maskAlternate {
+            onMain { $0.beginSwitcherSearch() }
+            return true
+        }
+
+        switch keyCode {
+        case KeyCode.up, KeyCode.k:
+            onMain { $0.moveSwitcherSelection(by: -1) }
+            return true
+        case KeyCode.down, KeyCode.j:
+            onMain { $0.moveSwitcherSelection(by: 1) }
+            return true
+        case KeyCode.returnKey:
+            cyclingModifier = nil
+            fastSearchActive = false
+            presentationPending = false
+            onMain { $0.commitSwitcherSelection() }
+            return true
+        case KeyCode.escape:
+            cyclingModifier = nil
+            fastSearchActive = false
+            presentationPending = false
+            onMain { $0.dismissSwitcher() }
+            return true
+        case KeyCode.delete:
+            onMain { $0.deleteSwitcherQueryCharacter() }
+            return true
+        case KeyCode.w where normalizedFlags == .maskCommand:
+            guard event.getIntegerValueField(.keyboardEventAutorepeat) == 0 else { return true }
+            onMain { $0.performSwitcherAction(.close) }
+            return true
+        case KeyCode.m where normalizedFlags == .maskCommand:
+            cyclingModifier = nil
+            presentationPending = false
+            onMain { $0.performSwitcherAction(.minimize) }
+            return true
+        case KeyCode.h where normalizedFlags == .maskCommand:
+            cyclingModifier = nil
+            presentationPending = false
+            onMain { $0.performSwitcherAction(.hideApplication) }
+            return true
+        case KeyCode.q where normalizedFlags == .maskCommand:
+            guard event.getIntegerValueField(.keyboardEventAutorepeat) == 0 else { return true }
+            onMain { $0.performSwitcherAction(.quitApplication) }
+            return true
+        default:
+            if configuration.directTyping,
+               (!flags.contains(.maskCommand) && !flags.contains(.maskAlternate) || cyclingModifier != nil),
+               let text = event.text,
+               !text.isEmpty {
+                onMain { $0.appendSwitcherQuery(text) }
+                return true
+            }
+            return false
+        }
+    }
+
+    private var isSwitcherVisible: Bool {
+        if presentationPending { return true }
+        if Thread.isMainThread { return MainActor.assumeIsolated { handler?.isSwitcherVisible ?? false } }
+        return DispatchQueue.main.sync { MainActor.assumeIsolated { handler?.isSwitcherVisible ?? false } }
+    }
+
+    private func presentSwitcher(mode: SwitcherMode, advanceImmediately: Bool) {
+        presentationPending = true
+        onMain { [weak self] handler in
+            handler.presentSwitcher(mode: mode, advanceImmediately: advanceImmediately)
+            self?.presentationPending = false
+        }
+    }
+
+    private func onMain(_ operation: @escaping @MainActor (GlobalInputHandler) -> Void) {
+        DispatchQueue.main.async { [weak self] in
+            guard let handler = self?.handler else { return }
+            operation(handler)
+        }
+    }
+
+    private func isAtOuterDisplayEdge(_ point: CGPoint) -> Bool {
+        guard let screen = NSScreen.screens.first(where: { $0.frame.contains(point) }) else { return false }
+        let atLeft = abs(point.x - screen.frame.minX) <= 6
+        let atRight = abs(point.x - screen.frame.maxX) <= 6
+        guard atLeft || atRight else { return false }
+
+        let probeX = atLeft ? screen.frame.minX - 2 : screen.frame.maxX + 2
+        let hasAdjacentScreen = NSScreen.screens.contains { other in
+            other !== screen && other.frame.contains(CGPoint(x: probeX, y: point.y))
+        }
+        return !hasAdjacentScreen
+    }
+}
+
+private enum KeyCode {
+    static let returnKey: UInt16 = 36
+    static let tab: UInt16 = 48
+    static let space: UInt16 = 49
+    static let grave: UInt16 = 50
+    static let delete: UInt16 = 51
+    static let escape: UInt16 = 53
+    static let s: UInt16 = 1
+    static let h: UInt16 = 4
+    static let q: UInt16 = 12
+    static let w: UInt16 = 13
+    static let j: UInt16 = 38
+    static let k: UInt16 = 40
+    static let m: UInt16 = 46
+    static let down: UInt16 = 125
+    static let up: UInt16 = 126
+}
+
+private extension FastSearchModifier {
+    var keyCode: UInt16 {
+        switch self {
+        case .rightOption: 61
+        case .leftOption: 58
+        case .function: 63
+        }
+    }
+
+    var eventFlag: CGEventFlags {
+        switch self {
+        case .rightOption, .leftOption: .maskAlternate
+        case .function: .maskSecondaryFn
+        }
+    }
+}
+
+private extension CGEvent {
+    var text: String? {
+        var length = 0
+        keyboardGetUnicodeString(maxStringLength: 0, actualStringLength: &length, unicodeString: nil)
+        guard length > 0 else { return nil }
+        var characters = [UniChar](repeating: 0, count: length)
+        keyboardGetUnicodeString(maxStringLength: length, actualStringLength: &length, unicodeString: &characters)
+        return String(utf16CodeUnits: characters, count: length)
+    }
+}
