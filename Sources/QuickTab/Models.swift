@@ -1,14 +1,15 @@
 import AppKit
 import ApplicationServices
 
-struct WindowID: Hashable, Codable, CustomStringConvertible {
+struct WindowID: Hashable, Codable, CustomStringConvertible, Sendable {
     let processID: pid_t
     let fingerprint: String
 
     var description: String { "\(processID):\(fingerprint)" }
 }
 
-struct WindowItem: Identifiable, Hashable {
+// Window snapshots cross the scan queue; their AppKit and AX references are read-only there.
+struct WindowItem: Identifiable, Hashable, @unchecked Sendable {
     let id: WindowID
     let processID: pid_t
     let appName: String
