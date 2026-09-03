@@ -57,6 +57,20 @@ final class SwitcherViewModelTests: XCTestCase {
         XCTAssertEqual(viewModel.selectedWindowID, first.id)
     }
 
+    func testPresentDoesNotPublishUnchangedSelection() {
+        let first = window("first")
+        let (viewModel, _) = makeViewModel(windows: [first])
+        var selections: [WindowID?] = []
+        let cancellable = viewModel.$selectedWindowID
+            .dropFirst()
+            .sink { selections.append($0) }
+
+        viewModel.present(.recent, pointerPosition: .zero)
+
+        XCTAssertTrue(selections.isEmpty)
+        withExtendedLifetime(cancellable) {}
+    }
+
     func testSelectionClearsWhenResultsBecomeEmpty() {
         let first = window("first")
         let (viewModel, repository) = makeViewModel(windows: [first])
@@ -94,6 +108,28 @@ final class SwitcherViewModelTests: XCTestCase {
         )
     }
 
+    func testQueryChangeAndResetRequestImmediateRevealForNewSelection() {
+        let first = window("first")
+        let second = window("second")
+        let (viewModel, _) = makeViewModel(windows: [first, second])
+        viewModel.present(.recent, pointerPosition: .zero)
+        var requests: [SwitcherViewModel.ScrollRequest] = []
+        let cancellable = viewModel.$scrollRequest
+            .dropFirst()
+            .compactMap { $0 }
+            .sink { requests.append($0) }
+
+        viewModel.appendToQuery("second")
+        viewModel.beginSearch()
+
+        XCTAssertEqual(viewModel.selectedWindowID, first.id)
+        XCTAssertEqual(requests, [
+            SwitcherViewModel.ScrollRequest(windowID: second.id, animated: false),
+            SwitcherViewModel.ScrollRequest(windowID: first.id, animated: false),
+        ])
+        withExtendedLifetime(cancellable) {}
+    }
+
     func testPointerSelectionDoesNotRequestProgrammaticScroll() {
         let first = window("first")
         let second = window("second")
@@ -123,7 +159,22 @@ final class SwitcherViewModelTests: XCTestCase {
         viewModel.handlePointerHover(over: second.id, at: CGPoint(x: 101, y: 101))
 
         XCTAssertEqual(viewModel.selectedWindowID, first.id)
-        XCTAssertEqual(viewModel.selectionOrigin, .programmatic)
+    }
+
+    func testGapMovementUpdatesPointerAnchorWithoutOverridingKeyboardSelection() {
+        let first = window("first")
+        let second = window("second")
+        let (viewModel, _) = makeViewModel(windows: [first, second])
+        let gapLocation = CGPoint(x: 120, y: 100)
+
+        viewModel.present(.recent, pointerPosition: CGPoint(x: 100, y: 100))
+        viewModel.updatePointerAnchor(to: gapLocation)
+        XCTAssertEqual(viewModel.selectedWindowID, first.id)
+
+        viewModel.moveSelection(by: 1)
+        viewModel.handlePointerHover(over: first.id, at: gapLocation)
+
+        XCTAssertEqual(viewModel.selectedWindowID, second.id)
     }
 
     func testGenuinePointerMovementSelectsHoveredWindowAndUpdatesAnchor() {
@@ -136,7 +187,6 @@ final class SwitcherViewModelTests: XCTestCase {
         viewModel.handlePointerHover(over: second.id, at: CGPoint(x: 104, y: 100))
 
         XCTAssertEqual(viewModel.selectedWindowID, second.id)
-        XCTAssertEqual(viewModel.selectionOrigin, .pointer)
 
         viewModel.handlePointerHover(over: third.id, at: CGPoint(x: 105, y: 100))
         XCTAssertEqual(viewModel.selectedWindowID, second.id)
@@ -156,11 +206,9 @@ final class SwitcherViewModelTests: XCTestCase {
         viewModel.moveSelection(by: 1)
 
         XCTAssertEqual(viewModel.selectedWindowID, third.id)
-        XCTAssertEqual(viewModel.selectionOrigin, .keyboard)
 
         viewModel.handlePointerHover(over: second.id, at: CGPoint(x: 104, y: 100))
         XCTAssertEqual(viewModel.selectedWindowID, third.id)
-        XCTAssertEqual(viewModel.selectionOrigin, .keyboard)
     }
 
     func testCommitByIDActivatesExactWindow() async {

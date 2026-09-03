@@ -86,6 +86,9 @@ struct SwitcherView: View {
                                         viewModel.handlePointerHover(over: result.id, at: location)
                                     }
                                 },
+                                onHoverEnded: { location in
+                                    viewModel.updatePointerAnchor(to: location)
+                                },
                                 onSelect: {
                                     viewModel.commit(result.id)
                                 }
@@ -135,6 +138,7 @@ private struct SwitcherRow: View {
     let result: SearchResult
     let isSelected: Bool
     let onHover: (CGPoint) -> Void
+    let onHoverEnded: (CGPoint) -> Void
     let onSelect: () -> Void
 
     var body: some View {
@@ -189,8 +193,11 @@ private struct SwitcherRow: View {
         }
         .buttonStyle(.plain)
         .onContinuousHover { phase in
-            if case .active = phase {
+            switch phase {
+            case .active:
                 onHover(NSEvent.mouseLocation)
+            case .ended:
+                onHoverEnded(NSEvent.mouseLocation)
             }
         }
     }

@@ -3,12 +3,6 @@ import Combine
 
 @MainActor
 final class SwitcherViewModel: ObservableObject {
-    enum SelectionOrigin: Equatable {
-        case programmatic
-        case keyboard
-        case pointer
-    }
-
     struct ScrollRequest: Equatable {
         let windowID: WindowID
         let animated: Bool
@@ -16,7 +10,6 @@ final class SwitcherViewModel: ObservableObject {
 
     @Published private(set) var results: [SearchResult] = []
     @Published private(set) var selectedWindowID: WindowID?
-    @Published private(set) var selectionOrigin: SelectionOrigin = .programmatic
     @Published private(set) var scrollRequest: ScrollRequest?
     @Published private(set) var mode: SwitcherMode = .recent
     @Published private(set) var isVisible = false
@@ -74,12 +67,12 @@ final class SwitcherViewModel: ObservableObject {
         rebuildResults(preserveSelection: false)
         if advanceImmediately, results.count > 1 {
             if let activeIndex = results.firstIndex(where: { $0.item.id == repository.activeWindowID }) {
-                setSelection(results[(activeIndex + 1) % results.count].item.id, origin: .programmatic)
+                setSelection(results[(activeIndex + 1) % results.count].item.id)
             } else {
-                setSelection(results.first?.item.id, origin: .programmatic)
+                setSelection(results.first?.item.id)
             }
         } else {
-            setSelection(results.first?.item.id, origin: .programmatic)
+            setSelection(results.first?.item.id)
         }
         if let selectedWindowID {
             scrollRequest = ScrollRequest(windowID: selectedWindowID, animated: false)
@@ -110,7 +103,7 @@ final class SwitcherViewModel: ObservableObject {
     func moveSelection(by offset: Int) {
         guard !results.isEmpty else { return }
         let index = ((selectedIndex + offset) % results.count + results.count) % results.count
-        setSelection(results[index].item.id, origin: .keyboard)
+        setSelection(results[index].item.id)
         scrollRequest = ScrollRequest(windowID: results[index].item.id, animated: true)
     }
 
@@ -124,7 +117,11 @@ final class SwitcherViewModel: ObservableObject {
         let deltaY = point.y - pointerAnchor.y
         guard deltaX * deltaX + deltaY * deltaY > pointerJitterThreshold * pointerJitterThreshold else { return }
         self.pointerAnchor = point
-        setSelection(id, origin: .pointer)
+        setSelection(id)
+    }
+
+    func updatePointerAnchor(to point: CGPoint) {
+        pointerAnchor = point
     }
 
     func commit() {
@@ -231,18 +228,22 @@ final class SwitcherViewModel: ObservableObject {
            results.contains(where: { $0.item.id == previousSelectedID }) {
             return
         } else if results.isEmpty {
-            setSelection(nil, origin: .programmatic)
+            setSelection(nil)
         } else if let preferredIndex {
-            setSelection(results[min(preferredIndex, results.count - 1)].item.id, origin: .programmatic)
+            setSelection(results[min(preferredIndex, results.count - 1)].item.id)
         } else if !preserveSelection {
-            setSelection(results.first?.item.id, origin: .programmatic)
+            setSelection(results.first?.item.id)
         } else {
-            setSelection(results[min(previousIndex, results.count - 1)].item.id, origin: .programmatic)
+            setSelection(results[min(previousIndex, results.count - 1)].item.id)
+        }
+
+        if isVisible, selectedWindowID != previousSelectedID, let selectedWindowID {
+            scrollRequest = ScrollRequest(windowID: selectedWindowID, animated: false)
         }
     }
 
-    private func setSelection(_ id: WindowID?, origin: SelectionOrigin) {
-        selectionOrigin = origin
+    private func setSelection(_ id: WindowID?) {
+        guard selectedWindowID != id else { return }
         selectedWindowID = id
     }
 }
