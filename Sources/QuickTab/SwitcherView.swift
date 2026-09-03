@@ -97,20 +97,14 @@ struct SwitcherView: View {
                     .padding(.vertical, 10)
                 }
                 .scrollIndicators(.hidden)
-                .onAppear {
-                    if let selectedWindowID = viewModel.selectedWindowID {
-                        proxy.scrollTo(selectedWindowID, anchor: .center)
-                    }
-                }
-                .onChange(of: viewModel.isVisible) { _, isVisible in
-                    if isVisible, let selectedWindowID = viewModel.selectedWindowID {
-                        proxy.scrollTo(selectedWindowID, anchor: .center)
-                    }
-                }
-                .onChange(of: viewModel.selectedWindowID) { _, selectedWindowID in
-                    guard viewModel.selectionOrigin == .keyboard, let selectedWindowID else { return }
-                    withAnimation(.easeOut(duration: 0.12)) {
-                        proxy.scrollTo(selectedWindowID, anchor: .center)
+                .onReceive(viewModel.$scrollRequest) { request in
+                    guard let request else { return }
+                    if request.animated {
+                        withAnimation(.easeOut(duration: 0.12)) {
+                            proxy.scrollTo(request.windowID, anchor: .center)
+                        }
+                    } else {
+                        proxy.scrollTo(request.windowID, anchor: .center)
                     }
                 }
             }

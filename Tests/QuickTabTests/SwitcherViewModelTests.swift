@@ -67,6 +67,52 @@ final class SwitcherViewModelTests: XCTestCase {
         XCTAssertNil(viewModel.selectedResult)
     }
 
+    func testPresentRequestsImmediateRevealForSelectedWindow() {
+        let first = window("first")
+        let second = window("second")
+        let (viewModel, _) = makeViewModel(windows: [first, second], activeWindowID: first.id)
+
+        viewModel.present(.recent, advanceImmediately: true, pointerPosition: .zero)
+
+        XCTAssertEqual(
+            viewModel.scrollRequest,
+            SwitcherViewModel.ScrollRequest(windowID: second.id, animated: false)
+        )
+    }
+
+    func testKeyboardMovementRequestsAnimatedScrollForSelectedWindow() {
+        let first = window("first")
+        let second = window("second")
+        let (viewModel, _) = makeViewModel(windows: [first, second])
+
+        viewModel.present(.recent, pointerPosition: .zero)
+        viewModel.moveSelection(by: 1)
+
+        XCTAssertEqual(
+            viewModel.scrollRequest,
+            SwitcherViewModel.ScrollRequest(windowID: second.id, animated: true)
+        )
+    }
+
+    func testPointerSelectionDoesNotRequestProgrammaticScroll() {
+        let first = window("first")
+        let second = window("second")
+        let (viewModel, _) = makeViewModel(windows: [first, second])
+        var requests: [SwitcherViewModel.ScrollRequest] = []
+        let cancellable = viewModel.$scrollRequest
+            .compactMap { $0 }
+            .sink { requests.append($0) }
+
+        viewModel.present(.recent, pointerPosition: .zero)
+        viewModel.handlePointerHover(over: second.id, at: CGPoint(x: 3, y: 0))
+
+        XCTAssertEqual(viewModel.selectedWindowID, second.id)
+        XCTAssertEqual(requests, [
+            SwitcherViewModel.ScrollRequest(windowID: first.id, animated: false),
+        ])
+        withExtendedLifetime(cancellable) {}
+    }
+
     func testStationaryPointerAndJitterDoNotChangeSelectionAfterPresenting() {
         let first = window("first")
         let second = window("second")

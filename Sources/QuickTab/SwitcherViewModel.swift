@@ -9,9 +9,15 @@ final class SwitcherViewModel: ObservableObject {
         case pointer
     }
 
+    struct ScrollRequest: Equatable {
+        let windowID: WindowID
+        let animated: Bool
+    }
+
     @Published private(set) var results: [SearchResult] = []
     @Published private(set) var selectedWindowID: WindowID?
     @Published private(set) var selectionOrigin: SelectionOrigin = .programmatic
+    @Published private(set) var scrollRequest: ScrollRequest?
     @Published private(set) var mode: SwitcherMode = .recent
     @Published private(set) var isVisible = false
     @Published var query = "" {
@@ -75,6 +81,9 @@ final class SwitcherViewModel: ObservableObject {
         } else {
             setSelection(results.first?.item.id, origin: .programmatic)
         }
+        if let selectedWindowID {
+            scrollRequest = ScrollRequest(windowID: selectedWindowID, animated: false)
+        }
         pointerAnchor = pointerPosition
         isVisible = true
         onVisibilityChange?(true)
@@ -102,6 +111,7 @@ final class SwitcherViewModel: ObservableObject {
         guard !results.isEmpty else { return }
         let index = ((selectedIndex + offset) % results.count + results.count) % results.count
         setSelection(results[index].item.id, origin: .keyboard)
+        scrollRequest = ScrollRequest(windowID: results[index].item.id, animated: true)
     }
 
     func handlePointerHover(over id: WindowID, at point: CGPoint) {
