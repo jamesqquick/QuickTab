@@ -17,6 +17,8 @@ QuickTab is a native macOS window switcher built for fast, deterministic keyboar
 
 QuickTab is Developer ID-signed and notarized by Apple.
 
+After installing a Sparkle-enabled release, QuickTab checks for updates daily and prompts before installing them. You can also choose **Check for Updates…** from the menu bar icon.
+
 ## Features
 
 - Switch between individual windows with Command-Tab, ordered by recent use.
@@ -30,7 +32,7 @@ QuickTab is Developer ID-signed and notarized by Apple.
 - Control how minimized windows and hidden applications are ordered or omitted.
 - Exclude applications from the switcher.
 - Launch automatically at login.
-- Stay local with no analytics, network calls, or third-party dependencies.
+- Stay private with no analytics; window data never leaves your Mac.
 
 ## Controls
 
@@ -88,6 +90,8 @@ QUICKTAB_SIGN_IDENTITY="Developer ID Application: Your Name (TEAMID)" \
 QUICKTAB_NOTARY_PROFILE="your-notary-profile" \
 ./scripts/package-release.sh
 ```
+
+Release packaging signs the DMG with the QuickTab Sparkle key stored in the login Keychain and adds the release to `appcast.xml`. Upload that exact `QuickTab.dmg` to the matching GitHub release before pushing the appcast change.
 
 ## License
 

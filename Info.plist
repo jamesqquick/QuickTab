@@ -17,9 +17,9 @@
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleShortVersionString</key>
-    <string>1.0.2</string>
+    <string>1.0.3</string>
     <key>CFBundleVersion</key>
-    <string>3</string>
+    <string>4</string>
     <key>LSMinimumSystemVersion</key>
     <string>14.0</string>
     <key>LSUIElement</key>
@@ -28,5 +28,17 @@
     <string>QuickTab uses accessibility access to list, focus, and manage your open windows.</string>
     <key>NSHumanReadableCopyright</key>
     <string>Copyright 2026 James Q Quick</string>
+    <key>SUAutomaticallyUpdate</key>
+    <false/>
+    <key>SUAllowsAutomaticUpdates</key>
+    <false/>
+    <key>SUEnableAutomaticChecks</key>
+    <true/>
+    <key>SUFeedURL</key>
+    <string>https://raw.githubusercontent.com/jamesqquick/QuickTab/main/appcast.xml</string>
+    <key>SUPublicEDKey</key>
+    <string>XcBjmic/09KyH09L1FEzOAoJOgqthm91c+h4mdCUpNs=</string>
+    <key>SUVerifyUpdateBeforeExtraction</key>
+    <true/>
 </dict>
 </plist>

@@ -1,4 +1,5 @@
 import AppKit
+import Sparkle
 
 @main
 enum QuickTabApp {
@@ -13,9 +14,15 @@ enum QuickTabApp {
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private var coordinator: AppCoordinator?
+    private let updaterController = SPUStandardUpdaterController(
+        startingUpdater: false,
+        updaterDelegate: nil,
+        userDriverDelegate: nil
+    )
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        coordinator = AppCoordinator()
+        updaterController.startUpdater()
+        coordinator = AppCoordinator(updaterController: updaterController)
         coordinator?.start()
     }
 
