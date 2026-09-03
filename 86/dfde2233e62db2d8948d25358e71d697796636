@@ -1,0 +1,43 @@
+.github/workflows/ci.yml
+  s_b39e1b76bf77a9::t_8d48ca664127f1 21-45
+Info.plist
+  s_1e0f5f56c6cece::t_58942765c6d65a 20,22,31-42
+Package.resolved
+  s_4dfeeb5e04e838::t_21143a892518f9 1-15
+scripts/package-release.sh
+  s_1e0f5f56c6cece::t_58e48a083d406b 9-10,19-32,60-66,68
+scripts/update-appcast.swift
+  s_1e0f5f56c6cece::t_7fd51edcb862ba 1-96
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "86dfde2233e62db2d8948d25358e71d697796636",
+  "prompts": {},
+  "sessions": {
+    "s_1e0f5f56c6cece": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_fa6b8882fffeP92lqzi5bHoLDe",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "James Quick <jquick@cloudflare.com>"
+    },
+    "s_4dfeeb5e04e838": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_fa2a8e8c6ffeSsoiI6nPl4hAM7",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "James Quick <jquick@cloudflare.com>"
+    },
+    "s_b39e1b76bf77a9": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_f988de7ebffeJezUjBTcEm6z4m",
+        "model": "gpt-5.6-luna"
+      },
+      "human_author": "James Quick <jquick@cloudflare.com>"
+    }
+  }
+}
