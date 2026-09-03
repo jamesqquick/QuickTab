@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<rss version="2.0" xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle">
+  <channel>
+    <title>QuickTab Updates</title>
+    <link>https://raw.githubusercontent.com/jamesqquick/QuickTab/main/appcast.xml</link>
+    <language>en</language>
+    <!-- Releases are inserted below this line. -->
+  </channel>
+</rss>

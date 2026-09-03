@@ -18,3 +18,28 @@ jobs:
         run: swift test
       - name: Build without warnings
         run: swift build -Xswiftc -warnings-as-errors
+      - name: Verify app bundle
+        run: |
+          QUICKTAB_UNIVERSAL=1 ./scripts/build-app.sh release
+          codesign --verify --deep --strict --verbose=2 .build/QuickTab.app
+          test -d .build/QuickTab.app/Contents/Frameworks/Sparkle.framework
+          SPARKLE=.build/QuickTab.app/Contents/Frameworks/Sparkle.framework/Versions/B
+          lipo .build/QuickTab.app/Contents/MacOS/QuickTab -verify_arch x86_64 arm64
+          lipo "$SPARKLE/Sparkle" -verify_arch x86_64 arm64
+          lipo "$SPARKLE/Autoupdate" -verify_arch x86_64 arm64
+          lipo "$SPARKLE/Updater.app/Contents/MacOS/Updater" -verify_arch x86_64 arm64
+          lipo "$SPARKLE/XPCServices/Installer.xpc/Contents/MacOS/Installer" -verify_arch x86_64 arm64
+          lipo "$SPARKLE/XPCServices/Downloader.xpc/Contents/MacOS/Downloader" -verify_arch x86_64 arm64
+          test "$(otool -L .build/QuickTab.app/Contents/MacOS/QuickTab | grep -c '@rpath/Sparkle.framework/Versions/B/Sparkle')" -eq 2
+          test "$(otool -l .build/QuickTab.app/Contents/MacOS/QuickTab | grep -c '@loader_path/../Frameworks')" -eq 2
+          test "$(plutil -extract SUAllowsAutomaticUpdates raw -o - .build/QuickTab.app/Contents/Info.plist)" = false
+          test "$(plutil -extract SUAutomaticallyUpdate raw -o - .build/QuickTab.app/Contents/Info.plist)" = false
+      - name: Verify appcast updates are idempotent
+        run: |
+          cp appcast.xml "$RUNNER_TEMP/appcast.xml"
+          SIGNATURE="$(printf '%086d==' 0)"
+          swift scripts/update-appcast.swift "$RUNNER_TEMP/appcast.xml" 1.2.3 999 "$SIGNATURE" 123
+          swift scripts/update-appcast.swift "$RUNNER_TEMP/appcast.xml" 1.2.3 999 "$SIGNATURE" 456
+          xmllint --noout "$RUNNER_TEMP/appcast.xml"
+          test "$(grep -c '<sparkle:version>999</sparkle:version>' "$RUNNER_TEMP/appcast.xml")" -eq 1
+          grep -q "sparkle:edSignature=\"$SIGNATURE\"" "$RUNNER_TEMP/appcast.xml"

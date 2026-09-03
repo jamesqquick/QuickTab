@@ -21,13 +21,17 @@ else
 fi
 
 rm -rf "$APP"
-mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
+mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources" "$APP/Contents/Frameworks"
 cp "$ROOT/Info.plist" "$APP/Contents/Info.plist"
 if [[ "${QUICKTAB_UNIVERSAL:-0}" == "1" ]]; then
   lipo -create "$ARM_BIN_PATH/QuickTab" "$INTEL_BIN_PATH/QuickTab" -output "$APP/Contents/MacOS/QuickTab"
+  SPARKLE_FRAMEWORK="$ARM_BIN_PATH/Sparkle.framework"
 else
   cp "$BIN_PATH/QuickTab" "$APP/Contents/MacOS/QuickTab"
+  SPARKLE_FRAMEWORK="$BIN_PATH/Sparkle.framework"
 fi
+ditto "$SPARKLE_FRAMEWORK" "$APP/Contents/Frameworks/Sparkle.framework"
+install_name_tool -add_rpath "@loader_path/../Frameworks" "$APP/Contents/MacOS/QuickTab"
 
 ICONSET="$ROOT/.build/QuickTab.iconset"
 rm -rf "$ICONSET"
@@ -37,11 +41,18 @@ iconutil -c icns "$ICONSET" -o "$APP/Contents/Resources/QuickTabIcon.icns"
 rm -rf "$ICONSET"
 
 SIGN_IDENTITY="${QUICKTAB_SIGN_IDENTITY:--}"
+SPARKLE="$APP/Contents/Frameworks/Sparkle.framework/Versions/B"
 if [[ "$SIGN_IDENTITY" == "-" ]]; then
-  codesign --force --deep --sign - "$APP"
+  SIGN_ARGS=(--force --sign -)
 else
-  codesign --force --deep --options runtime --timestamp --sign "$SIGN_IDENTITY" "$APP"
+  SIGN_ARGS=(--force --options runtime --timestamp --sign "$SIGN_IDENTITY")
 fi
+codesign "${SIGN_ARGS[@]}" "$SPARKLE/XPCServices/Installer.xpc"
+codesign "${SIGN_ARGS[@]}" --preserve-metadata=entitlements "$SPARKLE/XPCServices/Downloader.xpc"
+codesign "${SIGN_ARGS[@]}" "$SPARKLE/Autoupdate"
+codesign "${SIGN_ARGS[@]}" "$SPARKLE/Updater.app"
+codesign "${SIGN_ARGS[@]}" "$APP/Contents/Frameworks/Sparkle.framework"
+codesign "${SIGN_ARGS[@]}" "$APP"
 
 if [[ -n "${QUICKTAB_NOTARY_PROFILE:-}" ]]; then
   if [[ "$SIGN_IDENTITY" == "-" ]]; then

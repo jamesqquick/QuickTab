@@ -1,9 +1,11 @@
 import AppKit
 import Combine
+import Sparkle
 import SwiftUI
 
 @MainActor
 final class AppCoordinator: NSObject, GlobalInputHandler {
+    private let updaterController: SPUStandardUpdaterController
     private let settings = SettingsStore()
     private let repository = WindowRepository()
     private let learnedSearch = LearnedSearchStore()
@@ -20,6 +22,11 @@ final class AppCoordinator: NSObject, GlobalInputHandler {
     private var cancellables: Set<AnyCancellable> = []
 
     var isSwitcherVisible: Bool { viewModel.isVisible }
+
+    init(updaterController: SPUStandardUpdaterController) {
+        self.updaterController = updaterController
+        super.init()
+    }
 
     func start() {
         NSApp.applicationIconImage = AppIcon.make()
@@ -208,6 +215,12 @@ final class AppCoordinator: NSObject, GlobalInputHandler {
         menu.addItem(withTitle: "Refresh Windows", action: #selector(refreshWindows), keyEquivalent: "r").target = self
         menu.addItem(.separator())
         menu.addItem(withTitle: "Settings…", action: #selector(showSettings), keyEquivalent: ",").target = self
+        let checkForUpdates = menu.addItem(
+            withTitle: "Check for Updates…",
+            action: #selector(SPUStandardUpdaterController.checkForUpdates(_:)),
+            keyEquivalent: ""
+        )
+        checkForUpdates.target = updaterController
         if !repository.hasAccessibilityPermission {
             menu.addItem(withTitle: "Grant Accessibility Access…", action: #selector(showPermission), keyEquivalent: "").target = self
         } else if !inputReady {
