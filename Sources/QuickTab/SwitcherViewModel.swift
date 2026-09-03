@@ -3,8 +3,15 @@ import Combine
 
 @MainActor
 final class SwitcherViewModel: ObservableObject {
+    enum SelectionOrigin: Equatable {
+        case programmatic
+        case keyboard
+        case pointer
+    }
+
     @Published private(set) var results: [SearchResult] = []
-    @Published private(set) var selectedIndex = 0
+    @Published private(set) var selectedWindowID: WindowID?
+    @Published private(set) var selectionOrigin: SelectionOrigin = .programmatic
     @Published private(set) var mode: SwitcherMode = .recent
     @Published private(set) var isVisible = false
     @Published var query = "" {
@@ -12,8 +19,13 @@ final class SwitcherViewModel: ObservableObject {
     }
 
     var selectedResult: SearchResult? {
-        guard results.indices.contains(selectedIndex) else { return nil }
-        return results[selectedIndex]
+        guard let selectedWindowID else { return nil }
+        return results.first { $0.item.id == selectedWindowID }
+    }
+
+    var selectedIndex: Int {
+        guard let selectedWindowID else { return 0 }
+        return results.firstIndex { $0.item.id == selectedWindowID } ?? 0
     }
 
     var modeLabel: String {
@@ -25,17 +37,19 @@ final class SwitcherViewModel: ObservableObject {
         }
     }
 
-    private let repository: WindowRepository
+    private let repository: any WindowRepositoryProtocol
     private let learnedSearch: LearnedSearchStore
     private var allWindows: [WindowItem] = []
     private var cancellables: Set<AnyCancellable> = []
+    private var pointerAnchor: CGPoint?
+    private let pointerJitterThreshold: CGFloat = 2
     var onVisibilityChange: ((Bool) -> Void)?
     var onWillCommit: (() -> Void)?
 
-    init(repository: WindowRepository, learnedSearch: LearnedSearchStore) {
+    init(repository: any WindowRepositoryProtocol, learnedSearch: LearnedSearchStore) {
         self.repository = repository
         self.learnedSearch = learnedSearch
-        repository.$windows
+        repository.windowsPublisher
             .sink { [weak self] windows in
                 guard let self else { return }
                 self.allWindows = windows
@@ -44,20 +58,25 @@ final class SwitcherViewModel: ObservableObject {
             .store(in: &cancellables)
     }
 
-    func present(_ mode: SwitcherMode, advanceImmediately: Bool = false) {
+    func present(
+        _ mode: SwitcherMode,
+        advanceImmediately: Bool = false,
+        pointerPosition: CGPoint = NSEvent.mouseLocation
+    ) {
         self.mode = mode
         query = ""
-        isVisible = true
         rebuildResults(preserveSelection: false)
         if advanceImmediately, results.count > 1 {
             if let activeIndex = results.firstIndex(where: { $0.item.id == repository.activeWindowID }) {
-                selectedIndex = (activeIndex + 1) % results.count
+                setSelection(results[(activeIndex + 1) % results.count].item.id, origin: .programmatic)
             } else {
-                selectedIndex = 0
+                setSelection(results.first?.item.id, origin: .programmatic)
             }
         } else {
-            selectedIndex = 0
+            setSelection(results.first?.item.id, origin: .programmatic)
         }
+        pointerAnchor = pointerPosition
+        isVisible = true
         onVisibilityChange?(true)
     }
 
@@ -81,18 +100,35 @@ final class SwitcherViewModel: ObservableObject {
 
     func moveSelection(by offset: Int) {
         guard !results.isEmpty else { return }
-        selectedIndex = (selectedIndex + offset + results.count) % results.count
+        let index = ((selectedIndex + offset) % results.count + results.count) % results.count
+        setSelection(results[index].item.id, origin: .keyboard)
     }
 
-    func select(_ index: Int) {
-        guard results.indices.contains(index) else { return }
-        selectedIndex = index
+    func handlePointerHover(over id: WindowID, at point: CGPoint) {
+        guard isVisible, results.contains(where: { $0.item.id == id }) else { return }
+        guard let pointerAnchor else {
+            self.pointerAnchor = point
+            return
+        }
+        let deltaX = point.x - pointerAnchor.x
+        let deltaY = point.y - pointerAnchor.y
+        guard deltaX * deltaX + deltaY * deltaY > pointerJitterThreshold * pointerJitterThreshold else { return }
+        self.pointerAnchor = point
+        setSelection(id, origin: .pointer)
     }
 
     func commit() {
+        commit(selectedResult)
+    }
+
+    func commit(_ id: WindowID) {
+        commit(results.first { $0.item.id == id })
+    }
+
+    private func commit(_ result: SearchResult?) {
         guard isVisible else { return }
         onWillCommit?()
-        guard let result = selectedResult else {
+        guard let result else {
             dismiss()
             return
         }
@@ -113,6 +149,7 @@ final class SwitcherViewModel: ObservableObject {
 
     func perform(_ action: WindowAction, keepVisible: Bool = false) {
         guard let result = selectedResult else { return }
+        let adjacentIndex = selectedIndex
         guard repository.perform(action, on: result.item) else { return }
         if keepVisible {
             switch action {
@@ -123,7 +160,6 @@ final class SwitcherViewModel: ObservableObject {
             case .minimize, .hideApplication:
                 break
             }
-            let adjacentIndex = selectedIndex
             rebuildResults(preserveSelection: false, preferredIndex: adjacentIndex)
         } else {
             dismiss()
@@ -136,7 +172,8 @@ final class SwitcherViewModel: ObservableObject {
     }
 
     private func rebuildResults(preserveSelection: Bool, preferredIndex: Int? = nil) {
-        let selectedID = preserveSelection ? selectedResult?.item.id : nil
+        let previousSelectedID = selectedWindowID
+        let previousIndex = selectedIndex
         let source: [WindowItem]
         if case let .application(processID) = mode {
             source = allWindows.filter { $0.processID == processID }
@@ -179,16 +216,23 @@ final class SwitcherViewModel: ObservableObject {
             }
         }
 
-        if let selectedID, let updatedIndex = results.firstIndex(where: { $0.item.id == selectedID }) {
-            selectedIndex = updatedIndex
+        if preserveSelection,
+           let previousSelectedID,
+           results.contains(where: { $0.item.id == previousSelectedID }) {
+            return
         } else if results.isEmpty {
-            selectedIndex = 0
+            setSelection(nil, origin: .programmatic)
         } else if let preferredIndex {
-            selectedIndex = min(preferredIndex, results.count - 1)
+            setSelection(results[min(preferredIndex, results.count - 1)].item.id, origin: .programmatic)
         } else if !preserveSelection {
-            selectedIndex = 0
+            setSelection(results.first?.item.id, origin: .programmatic)
         } else {
-            selectedIndex = min(selectedIndex, results.count - 1)
+            setSelection(results[min(previousIndex, results.count - 1)].item.id, origin: .programmatic)
         }
+    }
+
+    private func setSelection(_ id: WindowID?, origin: SelectionOrigin) {
+        selectionOrigin = origin
+        selectedWindowID = id
     }
 }

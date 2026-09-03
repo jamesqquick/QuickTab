@@ -3,7 +3,16 @@ import ApplicationServices
 import Combine
 
 @MainActor
-final class WindowRepository: ObservableObject {
+protocol WindowRepositoryProtocol: AnyObject {
+    var windowsPublisher: AnyPublisher<[WindowItem], Never> { get }
+    var activeWindowID: WindowID? { get }
+
+    func activate(_ item: WindowItem)
+    func perform(_ action: WindowAction, on item: WindowItem) -> Bool
+}
+
+@MainActor
+final class WindowRepository: ObservableObject, WindowRepositoryProtocol {
     @Published private(set) var windows: [WindowItem] = []
     @Published private(set) var hasAccessibilityPermission = AXIsProcessTrusted()
     @Published private(set) var activeWindowID: WindowID?
@@ -26,6 +35,10 @@ final class WindowRepository: ObservableObject {
         hidden: .bottom,
         excludedBundleIDs: []
     )
+
+    var windowsPublisher: AnyPublisher<[WindowItem], Never> {
+        $windows.eraseToAnyPublisher()
+    }
 
     func start(preferences: @escaping @MainActor () -> VisibilityPreferences) {
         stop()
