@@ -1,0 +1,19 @@
+appcast.xml
+  s_21e93dc253cf53::t_58684138f0f6cd 8-22
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "0f9a4be0715c04a9af5c1e51e7f9eb2398982c93",
+  "prompts": {},
+  "sessions": {
+    "s_21e93dc253cf53": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_f926f56eeffek3io0hOxiA4iIG",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "James Quick <jquick@cloudflare.com>"
+    }
+  }
+}
