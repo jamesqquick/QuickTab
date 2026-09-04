@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 struct SwitcherView: View {
@@ -76,28 +77,38 @@ struct SwitcherView: View {
             ScrollViewReader { proxy in
                 ScrollView {
                     LazyVStack(spacing: 5) {
-                        ForEach(Array(viewModel.results.enumerated()), id: \.element.id) { index, result in
+                        ForEach(viewModel.results) { result in
                             SwitcherRow(
                                 result: result,
-                                isSelected: index == viewModel.selectedIndex,
-                                onHover: {
-                                    if settings.hoverSelects { viewModel.select(index) }
+                                isSelected: result.id == viewModel.selectedWindowID,
+                                onHover: { location in
+                                    if settings.hoverSelects {
+                                        viewModel.handlePointerHover(over: result.id, at: location)
+                                    }
+                                },
+                                onHoverEnded: { location in
+                                    viewModel.updatePointerAnchor(to: location)
                                 },
                                 onSelect: {
-                                    viewModel.select(index)
-                                    viewModel.commit()
+                                    viewModel.commit(result.id)
                                 }
                             )
-                            .id(index)
+                            .id(result.id)
                         }
                     }
                     .padding(.horizontal, 12)
                     .padding(.vertical, 10)
                 }
                 .scrollIndicators(.hidden)
-                .onChange(of: viewModel.selectedIndex) { _, newValue in
-                    withAnimation(.easeOut(duration: 0.12)) {
-                        proxy.scrollTo(newValue, anchor: .center)
+                .scrollDisabled(true)
+                .onReceive(viewModel.$scrollRequest) { request in
+                    guard let request else { return }
+                    if request.animated {
+                        withAnimation(.easeOut(duration: 0.12)) {
+                            proxy.scrollTo(request.windowID, anchor: .center)
+                        }
+                    } else {
+                        proxy.scrollTo(request.windowID, anchor: .center)
                     }
                 }
             }
@@ -127,7 +138,8 @@ struct SwitcherView: View {
 private struct SwitcherRow: View {
     let result: SearchResult
     let isSelected: Bool
-    let onHover: () -> Void
+    let onHover: (CGPoint) -> Void
+    let onHoverEnded: (CGPoint) -> Void
     let onSelect: () -> Void
 
     var body: some View {
@@ -181,8 +193,13 @@ private struct SwitcherRow: View {
             )
         }
         .buttonStyle(.plain)
-        .onHover { hovering in
-            if hovering { onHover() }
+        .onContinuousHover { phase in
+            switch phase {
+            case .active:
+                onHover(NSEvent.mouseLocation)
+            case .ended:
+                onHoverEnded(NSEvent.mouseLocation)
+            }
         }
     }
 }

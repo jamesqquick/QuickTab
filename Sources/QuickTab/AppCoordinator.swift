@@ -31,7 +31,7 @@ final class AppCoordinator: NSObject, GlobalInputHandler {
     func start() {
         NSApp.applicationIconImage = AppIcon.make()
         _ = switcherPanel
-        viewModel.onWillCommit = { [weak self] in self?.cancelEdgeGestureCommit() }
+        viewModel.onWillCommit = { [weak self] in self?.cancelSwitcherSession() }
         input.handler = self
         updateInputConfiguration()
         repository.start { [weak self] in
@@ -71,6 +71,7 @@ final class AppCoordinator: NSObject, GlobalInputHandler {
 
     func stop() {
         edgeGestureCommit?.cancel()
+        viewModel.dismiss()
         input.uninstall()
         repository.stop()
     }
@@ -78,6 +79,7 @@ final class AppCoordinator: NSObject, GlobalInputHandler {
     func presentSwitcher(mode: SwitcherMode, advanceImmediately: Bool) {
         cancelEdgeGestureCommit()
         repository.refresh(preferences: visibilityPreferences)
+        input.registerSwitcherPresentation()
         viewModel.present(mode, advanceImmediately: advanceImmediately)
     }
 
@@ -98,17 +100,20 @@ final class AppCoordinator: NSObject, GlobalInputHandler {
     }
 
     func commitSwitcherSelection() {
-        cancelEdgeGestureCommit()
+        cancelSwitcherSession()
         viewModel.commit()
     }
 
     func dismissSwitcher() {
-        cancelEdgeGestureCommit()
+        cancelSwitcherSession()
         viewModel.dismiss()
     }
 
     func performSwitcherAction(_ action: WindowAction) {
         cancelEdgeGestureCommit()
+        if action == .minimize || action == .hideApplication {
+            input.cancelActiveSwitcherSession()
+        }
         viewModel.perform(action, keepVisible: action == .close || action == .quitApplication)
     }
 
@@ -116,15 +121,26 @@ final class AppCoordinator: NSObject, GlobalInputHandler {
         sidebar.handlePointer(at: point)
     }
 
+    func pointerPressed(at point: CGPoint) {
+        guard viewModel.isVisible, switcherPanel.shouldDismissPointerPress(at: point) else { return }
+        dismissSwitcher()
+    }
+
     func edgeScrolled(delta: Double) {
         edgeGestureCommit?.cancel()
         if !viewModel.isVisible {
+            input.registerSwitcherPresentation()
             viewModel.present(.recent, advanceImmediately: false)
         }
         viewModel.moveSelection(by: delta < 0 ? 1 : -1)
         let workItem = DispatchWorkItem { [weak self] in self?.viewModel.commit() }
         edgeGestureCommit = workItem
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.34, execute: workItem)
+    }
+
+    func inputSessionDidReset() {
+        cancelEdgeGestureCommit()
+        viewModel.dismiss()
     }
 
     private var visibilityPreferences: VisibilityPreferences {
@@ -176,6 +192,11 @@ final class AppCoordinator: NSObject, GlobalInputHandler {
     private func cancelEdgeGestureCommit() {
         edgeGestureCommit?.cancel()
         edgeGestureCommit = nil
+    }
+
+    private func cancelSwitcherSession() {
+        input.cancelActiveSwitcherSession()
+        cancelEdgeGestureCommit()
     }
 
     private func configureMenuBar() {
