@@ -1,5 +1,5 @@
 import AppKit
-import CoreGraphics
+@preconcurrency import CoreGraphics
 
 struct GlobalInputConfiguration {
     var replaceCommandTab = true
@@ -341,6 +341,11 @@ final class GlobalInputController {
 
     func cancelActiveSwitcherSession() {
         resetActiveSwitcherSession(notifyHandler: false, clearEndingActionKey: false)
+    }
+
+    func registerSwitcherPresentation() {
+        guard !presentationPending else { return }
+        presentationGeneration &+= 1
     }
 
     private func resetActiveSwitcherSession(notifyHandler: Bool, clearEndingActionKey: Bool = true) {

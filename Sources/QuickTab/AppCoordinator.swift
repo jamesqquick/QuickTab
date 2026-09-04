@@ -79,6 +79,7 @@ final class AppCoordinator: NSObject, GlobalInputHandler {
     func presentSwitcher(mode: SwitcherMode, advanceImmediately: Bool) {
         cancelEdgeGestureCommit()
         repository.refresh(preferences: visibilityPreferences)
+        input.registerSwitcherPresentation()
         viewModel.present(mode, advanceImmediately: advanceImmediately)
     }
 
@@ -128,6 +129,7 @@ final class AppCoordinator: NSObject, GlobalInputHandler {
     func edgeScrolled(delta: Double) {
         edgeGestureCommit?.cancel()
         if !viewModel.isVisible {
+            input.registerSwitcherPresentation()
             viewModel.present(.recent, advanceImmediately: false)
         }
         viewModel.moveSelection(by: delta < 0 ? 1 : -1)

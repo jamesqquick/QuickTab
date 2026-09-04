@@ -245,6 +245,35 @@ final class GlobalInputControllerTests: XCTestCase {
         XCTAssertTrue(handler.isSwitcherVisible)
     }
 
+    func testExternalPresentationInvalidatesQueuedPointerPress() async throws {
+        let location = CGPoint(x: 120, y: 240)
+        let controller = GlobalInputController(mouseLocation: { location })
+        let handler = InputHandlerSpy()
+        handler.isSwitcherVisible = true
+        controller.handler = handler
+
+        XCTAssertFalse(controller.handle(type: .leftMouseDown, event: try makeMouseDownEvent()))
+        controller.registerSwitcherPresentation()
+        handler.presentSwitcher(mode: .search, advanceImmediately: false)
+
+        await drainMainQueue()
+        XCTAssertTrue(handler.pointerPressPoints.isEmpty)
+    }
+
+    func testInputPresentationRegistrationPreservesSameSessionPointerPress() async throws {
+        let location = CGPoint(x: 120, y: 240)
+        let controller = GlobalInputController(mouseLocation: { location })
+        let handler = InputHandlerSpy()
+        handler.onPresent = { controller.registerSwitcherPresentation() }
+        controller.handler = handler
+
+        XCTAssertTrue(controller.handle(type: .keyDown, event: try makeKeyEvent(keyCode: 49, flags: .maskControl)))
+        XCTAssertFalse(controller.handle(type: .leftMouseDown, event: try makeMouseDownEvent()))
+
+        await drainMainQueue()
+        XCTAssertEqual(handler.pointerPressPoints, [location])
+    }
+
     func testSameSessionPointerPressIsDelivered() async throws {
         let location = CGPoint(x: 120, y: 240)
         let controller = GlobalInputController(mouseLocation: { location })
