@@ -5,5 +5,20 @@
     <link>https://raw.githubusercontent.com/jamesqquick/QuickTab/main/appcast.xml</link>
     <language>en</language>
     <!-- Releases are inserted below this line. -->
+    <item>
+      <title>QuickTab 1.0.3</title>
+      <link>https://github.com/jamesqquick/QuickTab/releases/tag/v1.0.3</link>
+      <sparkle:version>4</sparkle:version>
+      <sparkle:shortVersionString>1.0.3</sparkle:shortVersionString>
+      <sparkle:minimumSystemVersion>14.0.0</sparkle:minimumSystemVersion>
+      <pubDate>Fri, 04 Sep 2026 17:07:14 +0000</pubDate>
+      <description sparkle:format="plain-text">See the GitHub release for details.</description>
+      <enclosure
+        url="https://github.com/jamesqquick/QuickTab/releases/download/v1.0.3/QuickTab.dmg"
+        type="application/octet-stream"
+        sparkle:edSignature="cVabsAm7qXiBW2QjBxM3DW1lrqCeFxlpaYl8mQMrzHH7ai35A/zjs8ep9bTzsJLoLoZKTWzV5lW9Z/uCZGqEDA=="
+        length="3010304"
+      />
+    </item>
   </channel>
 </rss>
