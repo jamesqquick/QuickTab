@@ -243,6 +243,84 @@ final class SwitcherViewModelTests: XCTestCase {
         XCTAssertTrue(viewModel.isVisible)
     }
 
+    func testCommitByIDAfterCommandCyclingPreventsReleaseRecommit() async throws {
+        try await assertCommitByIDCancelsHeldCyclingSession(
+            flags: .maskCommand,
+            configuration: GlobalInputConfiguration()
+        )
+    }
+
+    func testCommitByIDAfterOptionCyclingPreventsReleaseRecommit() async throws {
+        try await assertCommitByIDCancelsHeldCyclingSession(
+            flags: .maskAlternate,
+            configuration: GlobalInputConfiguration(enableOptionTab: true, enableFastSearch: false)
+        )
+    }
+
+    func testCommitByIDDuringFnFastSearchPreventsReleaseRecommit() async throws {
+        let first = window("first")
+        let second = window("second")
+        let (viewModel, repository) = makeViewModel(windows: [first, second])
+        var functionKeyHeld = true
+        let controller = GlobalInputController(modifierKeyState: { _ in functionKeyHeld })
+        let handler = ViewModelInputHandler(viewModel: viewModel)
+        let activated = expectation(description: "Exact pointer-selected window activated")
+        repository.onActivate = { activated.fulfill() }
+        controller.configuration = GlobalInputConfiguration(fastSearchModifier: .function)
+        controller.handler = handler
+        viewModel.onWillCommit = { controller.cancelActiveSwitcherSession() }
+
+        let functionDown = try XCTUnwrap(CGEvent(keyboardEventSource: nil, virtualKey: 63, keyDown: true))
+        functionDown.flags = .maskSecondaryFn
+        XCTAssertFalse(controller.handle(type: .flagsChanged, event: functionDown))
+
+        let character = try XCTUnwrap(CGEvent(keyboardEventSource: nil, virtualKey: 14, keyDown: true))
+        character.flags = .maskSecondaryFn
+        let characters = Array("e".utf16)
+        characters.withUnsafeBufferPointer { buffer in
+            character.keyboardSetUnicodeString(stringLength: buffer.count, unicodeString: buffer.baseAddress)
+        }
+        XCTAssertTrue(controller.handle(type: .keyDown, event: character))
+
+        viewModel.commit(second.id)
+        functionKeyHeld = false
+        let functionUp = try XCTUnwrap(CGEvent(keyboardEventSource: nil, virtualKey: 63, keyDown: false))
+        XCTAssertFalse(controller.handle(type: .flagsChanged, event: functionUp))
+
+        await fulfillment(of: [activated], timeout: 1)
+        XCTAssertEqual(repository.activatedWindowIDs, [second.id])
+        XCTAssertEqual(handler.commitCount, 0)
+    }
+
+    private func assertCommitByIDCancelsHeldCyclingSession(
+        flags: CGEventFlags,
+        configuration: GlobalInputConfiguration
+    ) async throws {
+        let first = window("first")
+        let second = window("second")
+        let (viewModel, repository) = makeViewModel(windows: [first, second])
+        let controller = GlobalInputController()
+        let handler = ViewModelInputHandler(viewModel: viewModel)
+        let activated = expectation(description: "Exact pointer-selected window activated")
+        repository.onActivate = { activated.fulfill() }
+        controller.configuration = configuration
+        controller.handler = handler
+        viewModel.onWillCommit = { controller.cancelActiveSwitcherSession() }
+
+        let tab = try XCTUnwrap(CGEvent(keyboardEventSource: nil, virtualKey: 48, keyDown: true))
+        tab.flags = flags
+        XCTAssertTrue(controller.handle(type: .keyDown, event: tab))
+
+        viewModel.commit(second.id)
+        let releaseKey: CGKeyCode = flags == .maskAlternate ? 58 : 55
+        let release = try XCTUnwrap(CGEvent(keyboardEventSource: nil, virtualKey: releaseKey, keyDown: false))
+        XCTAssertFalse(controller.handle(type: .flagsChanged, event: release))
+
+        await fulfillment(of: [activated], timeout: 1)
+        XCTAssertEqual(repository.activatedWindowIDs, [second.id])
+        XCTAssertEqual(handler.commitCount, 0)
+    }
+
     private func makeViewModel(
         windows: [WindowItem],
         activeWindowID: WindowID? = nil
@@ -303,4 +381,35 @@ private final class TestWindowRepository: WindowRepositoryProtocol {
     func perform(_ action: WindowAction, on item: WindowItem) -> Bool {
         true
     }
+}
+
+@MainActor
+private final class ViewModelInputHandler: GlobalInputHandler {
+    private let viewModel: SwitcherViewModel
+    private(set) var commitCount = 0
+
+    var isSwitcherVisible: Bool { viewModel.isVisible }
+
+    init(viewModel: SwitcherViewModel) {
+        self.viewModel = viewModel
+    }
+
+    func presentSwitcher(mode: SwitcherMode, advanceImmediately: Bool) {
+        viewModel.present(mode, advanceImmediately: advanceImmediately, pointerPosition: .zero)
+    }
+
+    func moveSwitcherSelection(by offset: Int) { viewModel.moveSelection(by: offset) }
+    func appendSwitcherQuery(_ text: String) { viewModel.appendToQuery(text) }
+    func beginSwitcherSearch() { viewModel.beginSearch() }
+    func deleteSwitcherQueryCharacter() { viewModel.deleteBackward() }
+    func commitSwitcherSelection() {
+        commitCount += 1
+        viewModel.commit()
+    }
+    func dismissSwitcher() { viewModel.dismiss() }
+    func performSwitcherAction(_ action: WindowAction) { viewModel.perform(action) }
+    func pointerMoved(to point: CGPoint) {}
+    func pointerPressed(at point: CGPoint) {}
+    func edgeScrolled(delta: Double) {}
+    func inputSessionDidReset() {}
 }

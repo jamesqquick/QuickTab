@@ -24,8 +24,12 @@ final class SwitcherPanelController {
         panels.forEach { $0.orderOut(nil) }
     }
 
-    func contains(_ screenPoint: CGPoint) -> Bool {
-        panels.contains { $0.frame.contains(screenPoint) }
+    func shouldDismissPointerPress(at screenPoint: CGPoint) -> Bool {
+        Self.shouldDismissPointerPress(at: screenPoint, panelFrames: panels.map(\.frame))
+    }
+
+    static func shouldDismissPointerPress(at screenPoint: CGPoint, panelFrames: [CGRect]) -> Bool {
+        !panelFrames.contains { $0.contains(screenPoint) }
     }
 
     private func rebuildPanels() {

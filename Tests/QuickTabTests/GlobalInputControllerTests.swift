@@ -67,12 +67,14 @@ final class GlobalInputControllerTests: XCTestCase {
         let tab = try makeKeyEvent(keyCode: 48, flags: .maskCommand)
         XCTAssertTrue(controller.handle(type: .keyDown, event: tab))
         controller.cancelActiveSwitcherSession()
+        controller.cancelActiveSwitcherSession()
         handler.isSwitcherVisible = false
 
         let commandRelease = try makeKeyEvent(keyCode: 55)
         XCTAssertFalse(controller.handle(type: .flagsChanged, event: commandRelease))
         XCTAssertFalse(controller.handle(type: .keyDown, event: try makeKeyEvent(keyCode: 0, text: "a")))
         XCTAssertEqual(handler.commitCount, 0)
+        XCTAssertEqual(handler.inputSessionResetCount, 0)
         XCTAssertTrue(handler.queries.isEmpty)
     }
 
@@ -117,6 +119,7 @@ final class GlobalInputControllerTests: XCTestCase {
         XCTAssertFalse(controller.handle(type: .tapDisabledByTimeout, event: event))
         XCTAssertFalse(controller.handle(type: .flagsChanged, event: try makeKeyEvent(keyCode: 55)))
         XCTAssertEqual(handler.commitCount, 0)
+        XCTAssertEqual(handler.inputSessionResetCount, 1)
     }
 
     func testReconfigurationClearsCyclingSession() throws {
@@ -129,6 +132,23 @@ final class GlobalInputControllerTests: XCTestCase {
             event: try makeKeyEvent(keyCode: 48, flags: .maskCommand)
         ))
         controller.configuration = GlobalInputConfiguration(directTyping: false)
+        XCTAssertFalse(controller.handle(type: .flagsChanged, event: try makeKeyEvent(keyCode: 55)))
+        XCTAssertEqual(handler.commitCount, 0)
+        XCTAssertEqual(handler.inputSessionResetCount, 1)
+    }
+
+    func testUninstallNotifiesHandlerOfInputSessionReset() throws {
+        let controller = GlobalInputController()
+        let handler = InputHandlerSpy()
+        controller.handler = handler
+
+        XCTAssertTrue(controller.handle(
+            type: .keyDown,
+            event: try makeKeyEvent(keyCode: 48, flags: .maskCommand)
+        ))
+        controller.uninstall()
+
+        XCTAssertEqual(handler.inputSessionResetCount, 1)
         XCTAssertFalse(controller.handle(type: .flagsChanged, event: try makeKeyEvent(keyCode: 55)))
         XCTAssertEqual(handler.commitCount, 0)
     }
@@ -156,6 +176,19 @@ final class GlobalInputControllerTests: XCTestCase {
         }
 
         XCTAssertEqual(handler.pointerPressPoints, [location, location, location])
+    }
+
+    func testPanelFramePolicyKeepsInsideClickAndDismissesOutsideClick() {
+        let frames = [CGRect(x: 100, y: 100, width: 400, height: 300)]
+
+        XCTAssertFalse(SwitcherPanelController.shouldDismissPointerPress(
+            at: CGPoint(x: 300, y: 250),
+            panelFrames: frames
+        ))
+        XCTAssertTrue(SwitcherPanelController.shouldDismissPointerPress(
+            at: CGPoint(x: 50, y: 50),
+            panelFrames: frames
+        ))
     }
 
     func testRecognizedEdgeGestureContinuesRoutingAfterSwitcherBecomesVisible() throws {
@@ -252,6 +285,7 @@ final class GlobalInputControllerTests: XCTestCase {
         await Task.yield()
         XCTAssertEqual(handler.actionCount, 1)
         XCTAssertEqual(handler.commitCount, 0)
+        XCTAssertTrue(handler.queries.isEmpty)
     }
 
     private func assertVisibleCycleChordCommitsOnRelease(
@@ -310,6 +344,7 @@ private final class InputHandlerSpy: GlobalInputHandler {
     var actionCount = 0
     var commitCount = 0
     var dismissCount = 0
+    var inputSessionResetCount = 0
     var selectionOffsets: [Int] = []
     var queries: [String] = []
     var pointerPressPoints: [CGPoint] = []
@@ -340,6 +375,7 @@ private final class InputHandlerSpy: GlobalInputHandler {
     }
     func pointerMoved(to point: CGPoint) {}
     func pointerPressed(at point: CGPoint) { pointerPressPoints.append(point) }
+    func inputSessionDidReset() { inputSessionResetCount += 1 }
     func edgeScrolled(delta: Double) {
         edgeScrollDeltas.append(delta)
         if showSwitcherOnEdgeScroll {

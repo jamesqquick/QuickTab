@@ -120,7 +120,7 @@ final class AppCoordinator: NSObject, GlobalInputHandler {
     }
 
     func pointerPressed(at point: CGPoint) {
-        guard viewModel.isVisible, !switcherPanel.contains(point) else { return }
+        guard viewModel.isVisible, switcherPanel.shouldDismissPointerPress(at: point) else { return }
         dismissSwitcher()
     }
 
@@ -133,6 +133,10 @@ final class AppCoordinator: NSObject, GlobalInputHandler {
         let workItem = DispatchWorkItem { [weak self] in self?.viewModel.commit() }
         edgeGestureCommit = workItem
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.34, execute: workItem)
+    }
+
+    func inputSessionDidReset() {
+        cancelEdgeGestureCommit()
     }
 
     private var visibilityPreferences: VisibilityPreferences {

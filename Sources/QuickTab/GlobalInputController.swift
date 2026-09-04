@@ -23,12 +23,13 @@ protocol GlobalInputHandler: AnyObject {
     func pointerMoved(to point: CGPoint)
     func pointerPressed(at point: CGPoint)
     func edgeScrolled(delta: Double)
+    func inputSessionDidReset()
 }
 
 final class GlobalInputController {
     weak var handler: GlobalInputHandler?
     var configuration = GlobalInputConfiguration() {
-        didSet { cancelActiveSwitcherSession() }
+        didSet { resetActiveSwitcherSession(notifyHandler: true) }
     }
 
     private var eventTap: CFMachPort?
@@ -44,15 +45,20 @@ final class GlobalInputController {
     private var presentationPending = false
     private let mouseLocation: () -> CGPoint
     private let outerDisplayEdgePredicate: (CGPoint) -> Bool
+    private let modifierKeyState: (CGKeyCode) -> Bool
 
     var isInstalled: Bool { eventTap != nil }
 
     init(
         mouseLocation: @escaping () -> CGPoint = { NSEvent.mouseLocation },
-        isAtOuterDisplayEdge: ((CGPoint) -> Bool)? = nil
+        isAtOuterDisplayEdge: ((CGPoint) -> Bool)? = nil,
+        modifierKeyState: @escaping (CGKeyCode) -> Bool = {
+            CGEventSource.keyState(.combinedSessionState, key: $0)
+        }
     ) {
         self.mouseLocation = mouseLocation
         outerDisplayEdgePredicate = isAtOuterDisplayEdge ?? Self.isAtOuterDisplayEdge
+        self.modifierKeyState = modifierKeyState
     }
 
     func install() -> Bool {
@@ -90,7 +96,7 @@ final class GlobalInputController {
         if let runLoopSource { CFRunLoopRemoveSource(CFRunLoopGetMain(), runLoopSource, .commonModes) }
         runLoopSource = nil
         eventTap = nil
-        cancelActiveSwitcherSession()
+        resetActiveSwitcherSession(notifyHandler: true)
     }
 
     private static let eventCallback: CGEventTapCallBack = { _, type, event, userInfo in
@@ -101,7 +107,7 @@ final class GlobalInputController {
 
     func handle(type: CGEventType, event: CGEvent) -> Bool {
         if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
-            cancelActiveSwitcherSession()
+            resetActiveSwitcherSession(notifyHandler: true)
             if let eventTap { CGEvent.tapEnable(tap: eventTap, enable: true) }
             return false
         }
@@ -170,10 +176,7 @@ final class GlobalInputController {
         if type == .flagsChanged {
             if configuration.enableFastSearch,
                keyCode == configuration.fastSearchModifier.keyCode {
-                let nowHeld = CGEventSource.keyState(
-                    .combinedSessionState,
-                    key: CGKeyCode(configuration.fastSearchModifier.keyCode)
-                )
+                let nowHeld = modifierKeyState(CGKeyCode(configuration.fastSearchModifier.keyCode))
                 if fastModifierHeld && !nowHeld && fastSearchActive {
                     cancelActiveSwitcherSession()
                     onMain { $0.commitSwitcherSelection() }
@@ -314,11 +317,18 @@ final class GlobalInputController {
     }
 
     func cancelActiveSwitcherSession() {
+        resetActiveSwitcherSession(notifyHandler: false)
+    }
+
+    private func resetActiveSwitcherSession(notifyHandler: Bool) {
         cyclingModifier = nil
         fastModifierHeld = false
         fastSearchActive = false
         presentationPending = false
         resetEdgeGesture()
+        if notifyHandler {
+            onMain { $0.inputSessionDidReset() }
+        }
     }
 
     private var isSwitcherVisible: Bool {
