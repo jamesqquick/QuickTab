@@ -4,32 +4,6 @@ import XCTest
 
 @MainActor
 final class GlobalInputControllerTests: XCTestCase {
-    func testVisibleScrollWheelPassesThroughWithoutMovingSelection() throws {
-        let controller = GlobalInputController()
-        let handler = InputHandlerSpy()
-        handler.isSwitcherVisible = true
-        controller.handler = handler
-
-        let scroll = try makeScrollEvent(delta: -4)
-
-        XCTAssertFalse(controller.handle(type: .scrollWheel, event: scroll))
-        XCTAssertTrue(handler.selectionOffsets.isEmpty)
-    }
-
-    func testVisibleSwitcherDoesNotStartEdgeScrollGesture() throws {
-        let controller = GlobalInputController(
-            mouseLocation: { .zero },
-            isAtOuterDisplayEdge: { _ in true }
-        )
-        let handler = InputHandlerSpy()
-        handler.isSwitcherVisible = true
-        controller.handler = handler
-
-        XCTAssertFalse(controller.handle(type: .scrollWheel, event: try makeScrollEvent(delta: 4)))
-        XCTAssertFalse(controller.handle(type: .scrollWheel, event: try makeScrollEvent(delta: 4)))
-        XCTAssertTrue(handler.edgeScrollDeltas.isEmpty)
-    }
-
     func testControlSpacePresentationIsActiveForImmediatelyFollowingCharacter() async throws {
         let controller = GlobalInputController()
         let handler = InputHandlerSpy()
@@ -301,42 +275,6 @@ final class GlobalInputControllerTests: XCTestCase {
         XCTAssertTrue(SwitcherPanelController.shouldDismissPointerPress(at: CGPoint(x: 110, y: 250), panelFrames: [frame]))
     }
 
-    func testRecognizedEdgeGestureContinuesRoutingAfterSwitcherBecomesVisible() async throws {
-        let controller = GlobalInputController(
-            mouseLocation: { .zero },
-            isAtOuterDisplayEdge: { _ in true }
-        )
-        let handler = InputHandlerSpy()
-        handler.showSwitcherOnEdgeScroll = true
-        controller.handler = handler
-
-        XCTAssertFalse(controller.handle(type: .scrollWheel, event: try makeScrollEvent(delta: 4)))
-        XCTAssertTrue(controller.handle(type: .scrollWheel, event: try makeScrollEvent(delta: 4)))
-        XCTAssertTrue(controller.handle(type: .scrollWheel, event: try makeScrollEvent(delta: -1)))
-
-        await drainMainQueue()
-        XCTAssertEqual(handler.edgeScrollDeltas, [8, -1])
-        XCTAssertTrue(handler.selectionOffsets.isEmpty)
-    }
-
-    func testRecognizedEdgeGestureCapturesDeltaBeforeAReset() async throws {
-        var isAtEdge = true
-        let controller = GlobalInputController(
-            mouseLocation: { .zero },
-            isAtOuterDisplayEdge: { _ in isAtEdge }
-        )
-        let handler = InputHandlerSpy()
-        controller.handler = handler
-
-        XCTAssertFalse(controller.handle(type: .scrollWheel, event: try makeScrollEvent(delta: 4)))
-        XCTAssertTrue(controller.handle(type: .scrollWheel, event: try makeScrollEvent(delta: 4)))
-        isAtEdge = false
-        XCTAssertFalse(controller.handle(type: .scrollWheel, event: try makeScrollEvent(delta: -1)))
-
-        await drainMainQueue()
-        XCTAssertEqual(handler.edgeScrollDeltas, [8])
-    }
-
     func testCommandQKeepsCyclingUntilCommandRelease() async throws {
         try await assertCyclingAction(keyCode: 12, expectedAction: .quitApplication)
     }
@@ -502,17 +440,6 @@ final class GlobalInputControllerTests: XCTestCase {
         return event
     }
 
-    private func makeScrollEvent(delta: Int32) throws -> CGEvent {
-        try XCTUnwrap(CGEvent(
-            scrollWheelEvent2Source: nil,
-            units: .pixel,
-            wheelCount: 1,
-            wheel1: delta,
-            wheel2: 0,
-            wheel3: 0
-        ))
-    }
-
     private func makeMouseDownEvent() throws -> CGEvent {
         try XCTUnwrap(CGEvent(
             mouseEventSource: nil,
@@ -537,9 +464,7 @@ private final class InputHandlerSpy: GlobalInputHandler {
     var selectionOffsets: [Int] = []
     var queries: [String] = []
     var pointerPressPoints: [CGPoint] = []
-    var edgeScrollDeltas: [Double] = []
     var events: [String] = []
-    var showSwitcherOnEdgeScroll = false
 
     func presentSwitcher(mode: SwitcherMode, advanceImmediately: Bool) {
         isSwitcherVisible = true
@@ -572,11 +497,5 @@ private final class InputHandlerSpy: GlobalInputHandler {
     func inputSessionDidReset() {
         inputSessionResetCount += 1
         dismissSwitcher()
-    }
-    func edgeScrolled(delta: Double) {
-        edgeScrollDeltas.append(delta)
-        if showSwitcherOnEdgeScroll {
-            isSwitcherVisible = true
-        }
     }
 }
