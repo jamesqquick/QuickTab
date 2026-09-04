@@ -297,6 +297,24 @@ final class GlobalInputControllerTests: XCTestCase {
         try await assertEndingAction(keyCode: 4, expectedAction: .hideApplication)
     }
 
+    func testEndingActionsPassThroughWithoutSwitcherSession() async throws {
+        let controller = GlobalInputController()
+        let handler = InputHandlerSpy()
+        controller.handler = handler
+
+        XCTAssertFalse(controller.handle(
+            type: .keyDown,
+            event: try makeKeyEvent(keyCode: 46, flags: .maskCommand)
+        ))
+        XCTAssertFalse(controller.handle(
+            type: .keyDown,
+            event: try makeKeyEvent(keyCode: 4, flags: .maskCommand)
+        ))
+
+        await drainMainQueue()
+        XCTAssertEqual(handler.actionCount, 0)
+    }
+
     private func assertCyclingAction(keyCode: CGKeyCode, expectedAction: WindowAction) async throws {
         let controller = GlobalInputController()
         let handler = InputHandlerSpy()
@@ -348,14 +366,20 @@ final class GlobalInputControllerTests: XCTestCase {
         let action = try makeKeyEvent(keyCode: keyCode, flags: .maskCommand)
         XCTAssertTrue(controller.handle(type: .keyDown, event: action))
 
-        await fulfillment(of: [actionReceived], timeout: 1)
-
         let repeatedAction = try makeKeyEvent(keyCode: keyCode, flags: .maskCommand)
         repeatedAction.setIntegerValueField(.keyboardEventAutorepeat, value: 1)
         XCTAssertTrue(controller.handle(type: .keyDown, event: repeatedAction))
 
+        let actionRelease = try makeKeyEvent(keyCode: keyCode, keyDown: false)
+        XCTAssertTrue(controller.handle(type: .keyUp, event: actionRelease))
+
+        let repeatedActionAfterRelease = try makeKeyEvent(keyCode: keyCode, flags: .maskCommand)
+        repeatedActionAfterRelease.setIntegerValueField(.keyboardEventAutorepeat, value: 1)
+        XCTAssertFalse(controller.handle(type: .keyDown, event: repeatedActionAfterRelease))
+
         let commandRelease = try makeKeyEvent(keyCode: 55)
         XCTAssertFalse(controller.handle(type: .flagsChanged, event: commandRelease))
+        await fulfillment(of: [actionReceived], timeout: 1)
         await drainMainQueue()
         XCTAssertEqual(handler.actionCount, 1)
         XCTAssertEqual(handler.commitCount, 0)
@@ -392,9 +416,10 @@ final class GlobalInputControllerTests: XCTestCase {
     private func makeKeyEvent(
         keyCode: CGKeyCode,
         flags: CGEventFlags = [],
+        keyDown: Bool = true,
         text: String? = nil
     ) throws -> CGEvent {
-        let event = try XCTUnwrap(CGEvent(keyboardEventSource: nil, virtualKey: keyCode, keyDown: true))
+        let event = try XCTUnwrap(CGEvent(keyboardEventSource: nil, virtualKey: keyCode, keyDown: keyDown))
         event.flags = flags
         if let text {
             var characters = Array(text.utf16)

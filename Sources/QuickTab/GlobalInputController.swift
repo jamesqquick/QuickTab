@@ -43,6 +43,7 @@ final class GlobalInputController {
     private var edgeGestureRecognized = false
     private var lastEdgeScrollAt = Date.distantPast
     private var presentationPending = false
+    private var endingActionKeyCode: UInt16?
     private let mouseLocation: () -> CGPoint
     private let outerDisplayEdgePredicate: (CGPoint) -> Bool
     private let modifierKeyState: (CGKeyCode) -> Bool
@@ -196,10 +197,19 @@ final class GlobalInputController {
         }
 
         if type == .keyUp {
+            if keyCode == endingActionKeyCode {
+                endingActionKeyCode = nil
+                return true
+            }
             return cyclingModifier != nil && (keyCode == KeyCode.tab || keyCode == KeyCode.grave)
         }
 
         guard type == .keyDown else { return false }
+
+        if keyCode == endingActionKeyCode,
+           event.getIntegerValueField(.keyboardEventAutorepeat) != 0 {
+            return true
+        }
 
         if configuration.enableFastSearch,
            fastModifierHeld,
@@ -295,11 +305,13 @@ final class GlobalInputController {
         case KeyCode.m where normalizedFlags == .maskCommand:
             guard event.getIntegerValueField(.keyboardEventAutorepeat) == 0 else { return true }
             cancelActiveSwitcherSession()
+            endingActionKeyCode = keyCode
             enqueueHandlerWork { $0.performSwitcherAction(.minimize) }
             return true
         case KeyCode.h where normalizedFlags == .maskCommand:
             guard event.getIntegerValueField(.keyboardEventAutorepeat) == 0 else { return true }
             cancelActiveSwitcherSession()
+            endingActionKeyCode = keyCode
             enqueueHandlerWork { $0.performSwitcherAction(.hideApplication) }
             return true
         case KeyCode.q where normalizedFlags == .maskCommand:
@@ -319,14 +331,17 @@ final class GlobalInputController {
     }
 
     func cancelActiveSwitcherSession() {
-        resetActiveSwitcherSession(notifyHandler: false)
+        resetActiveSwitcherSession(notifyHandler: false, clearEndingActionKey: false)
     }
 
-    private func resetActiveSwitcherSession(notifyHandler: Bool) {
+    private func resetActiveSwitcherSession(notifyHandler: Bool, clearEndingActionKey: Bool = true) {
         cyclingModifier = nil
         fastModifierHeld = false
         fastSearchActive = false
         presentationPending = false
+        if clearEndingActionKey {
+            endingActionKeyCode = nil
+        }
         resetEdgeGesture()
         if notifyHandler {
             enqueueHandlerWork { $0.inputSessionDidReset() }
