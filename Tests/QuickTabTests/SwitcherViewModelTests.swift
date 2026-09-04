@@ -448,6 +448,5 @@ private final class ViewModelInputHandler: GlobalInputHandler {
     func performSwitcherAction(_ action: WindowAction) { viewModel.perform(action) }
     func pointerMoved(to point: CGPoint) {}
     func pointerPressed(at point: CGPoint) {}
-    func edgeScrolled(delta: Double) {}
     func inputSessionDidReset() { viewModel.dismiss() }
 }

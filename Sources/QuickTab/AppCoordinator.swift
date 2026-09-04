@@ -17,7 +17,6 @@ final class AppCoordinator: NSObject, GlobalInputHandler {
     private var statusItem: NSStatusItem?
     private var settingsWindow: NSWindow?
     private var permissionWindow: NSWindow?
-    private var edgeGestureCommit: DispatchWorkItem?
     private var inputReady = false
     private var cancellables: Set<AnyCancellable> = []
 
@@ -70,14 +69,12 @@ final class AppCoordinator: NSObject, GlobalInputHandler {
     }
 
     func stop() {
-        edgeGestureCommit?.cancel()
         viewModel.dismiss()
         input.uninstall()
         repository.stop()
     }
 
     func presentSwitcher(mode: SwitcherMode, advanceImmediately: Bool) {
-        cancelEdgeGestureCommit()
         repository.refresh(preferences: visibilityPreferences)
         input.registerSwitcherPresentation()
         viewModel.present(mode, advanceImmediately: advanceImmediately)
@@ -110,7 +107,6 @@ final class AppCoordinator: NSObject, GlobalInputHandler {
     }
 
     func performSwitcherAction(_ action: WindowAction) {
-        cancelEdgeGestureCommit()
         if action == .minimize || action == .hideApplication {
             input.cancelActiveSwitcherSession()
         }
@@ -126,20 +122,7 @@ final class AppCoordinator: NSObject, GlobalInputHandler {
         dismissSwitcher()
     }
 
-    func edgeScrolled(delta: Double) {
-        edgeGestureCommit?.cancel()
-        if !viewModel.isVisible {
-            input.registerSwitcherPresentation()
-            viewModel.present(.recent, advanceImmediately: false)
-        }
-        viewModel.moveSelection(by: delta < 0 ? 1 : -1)
-        let workItem = DispatchWorkItem { [weak self] in self?.viewModel.commit() }
-        edgeGestureCommit = workItem
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.34, execute: workItem)
-    }
-
     func inputSessionDidReset() {
-        cancelEdgeGestureCommit()
         viewModel.dismiss()
     }
 
@@ -189,14 +172,8 @@ final class AppCoordinator: NSObject, GlobalInputHandler {
         rebuildMenu()
     }
 
-    private func cancelEdgeGestureCommit() {
-        edgeGestureCommit?.cancel()
-        edgeGestureCommit = nil
-    }
-
     private func cancelSwitcherSession() {
         input.cancelActiveSwitcherSession()
-        cancelEdgeGestureCommit()
     }
 
     private func configureMenuBar() {

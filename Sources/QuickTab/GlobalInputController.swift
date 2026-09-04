@@ -22,7 +22,6 @@ protocol GlobalInputHandler: AnyObject {
     func performSwitcherAction(_ action: WindowAction)
     func pointerMoved(to point: CGPoint)
     func pointerPressed(at point: CGPoint)
-    func edgeScrolled(delta: Double)
     func inputSessionDidReset()
 }
 
@@ -40,27 +39,21 @@ final class GlobalInputController {
     private var fastSearchActive = false
     private var pendingMousePoint: CGPoint?
     private var mouseUpdateScheduled = false
-    private var edgeScrollAccumulator = 0.0
-    private var edgeGestureRecognized = false
-    private var lastEdgeScrollAt = Date.distantPast
     private var presentationPending = false
     private var presentationGeneration: UInt = 0
     private var endingActionKeyCode: UInt16?
     private let mouseLocation: () -> CGPoint
-    private let outerDisplayEdgePredicate: (CGPoint) -> Bool
     private let modifierKeyState: (CGKeyCode) -> Bool
 
     var isInstalled: Bool { eventTap != nil }
 
     init(
         mouseLocation: @escaping () -> CGPoint = { NSEvent.mouseLocation },
-        isAtOuterDisplayEdge: ((CGPoint) -> Bool)? = nil,
         modifierKeyState: @escaping (CGKeyCode) -> Bool = {
             CGEventSource.keyState(.combinedSessionState, key: $0)
         }
     ) {
         self.mouseLocation = mouseLocation
-        outerDisplayEdgePredicate = isAtOuterDisplayEdge ?? Self.isAtOuterDisplayEdge
         self.modifierKeyState = modifierKeyState
     }
 
@@ -74,7 +67,6 @@ final class GlobalInputController {
             .leftMouseDown,
             .rightMouseDown,
             .otherMouseDown,
-            .scrollWheel,
         ]
         let mask = types.reduce(CGEventMask(0)) { $0 | (CGEventMask(1) << $1.rawValue) }
         guard let tap = CGEvent.tapCreate(
@@ -142,44 +134,6 @@ final class GlobalInputController {
                 handler.pointerPressed(at: location)
             }
             return false
-        }
-
-        if type == .scrollWheel {
-            let location = mouseLocation()
-            let delta = event.scrollDelta
-            guard abs(delta) >= 0.1 else { return false }
-
-            let now = Date()
-            if edgeGestureRecognized {
-                guard now.timeIntervalSince(lastEdgeScrollAt) <= 0.45,
-                      outerDisplayEdgePredicate(location) else {
-                    resetEdgeGesture()
-                    return false
-                }
-                lastEdgeScrollAt = now
-                enqueueHandlerWork { $0.edgeScrolled(delta: delta) }
-                return true
-            }
-
-            guard !isSwitcherVisible else {
-                resetEdgeGesture()
-                return false
-            }
-            guard outerDisplayEdgePredicate(location) else {
-                resetEdgeGesture()
-                return false
-            }
-            if now.timeIntervalSince(lastEdgeScrollAt) > 0.45 {
-                edgeScrollAccumulator = 0
-            }
-            lastEdgeScrollAt = now
-            edgeScrollAccumulator += delta
-            guard abs(edgeScrollAccumulator) >= 7 else { return false }
-
-            edgeGestureRecognized = true
-            let accumulatedDelta = edgeScrollAccumulator
-            enqueueHandlerWork { $0.edgeScrolled(delta: accumulatedDelta) }
-            return true
         }
 
         let keyCode = UInt16(event.getIntegerValueField(.keyboardEventKeycode))
@@ -357,7 +311,6 @@ final class GlobalInputController {
         if clearEndingActionKey {
             endingActionKeyCode = nil
         }
-        resetEdgeGesture()
         if notifyHandler {
             enqueueHandlerWork { $0.inputSessionDidReset() }
         }
@@ -384,24 +337,6 @@ final class GlobalInputController {
         }
     }
 
-    private func resetEdgeGesture() {
-        edgeScrollAccumulator = 0
-        edgeGestureRecognized = false
-        lastEdgeScrollAt = .distantPast
-    }
-
-    private static func isAtOuterDisplayEdge(_ point: CGPoint) -> Bool {
-        guard let screen = NSScreen.screens.first(where: { $0.frame.contains(point) }) else { return false }
-        let atLeft = abs(point.x - screen.frame.minX) <= 6
-        let atRight = abs(point.x - screen.frame.maxX) <= 6
-        guard atLeft || atRight else { return false }
-
-        let probeX = atLeft ? screen.frame.minX - 2 : screen.frame.maxX + 2
-        let hasAdjacentScreen = NSScreen.screens.contains { other in
-            other !== screen && other.frame.contains(CGPoint(x: probeX, y: point.y))
-        }
-        return !hasAdjacentScreen
-    }
 }
 
 private enum KeyCode {
@@ -440,12 +375,6 @@ private extension FastSearchModifier {
 }
 
 private extension CGEvent {
-    var scrollDelta: Double {
-        let pointDelta = getIntegerValueField(.scrollWheelEventPointDeltaAxis1)
-        if pointDelta != 0 { return Double(pointDelta) }
-        return getDoubleValueField(.scrollWheelEventDeltaAxis1)
-    }
-
     var text: String? {
         var length = 0
         keyboardGetUnicodeString(maxStringLength: 0, actualStringLength: &length, unicodeString: nil)
