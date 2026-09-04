@@ -41,6 +41,7 @@ final class SwitcherViewModel: ObservableObject {
     private var allWindows: [WindowItem] = []
     private var cancellables: Set<AnyCancellable> = []
     private var pointerAnchor: CGPoint?
+    private var pendingActivation: Task<Void, Never>?
     private let pointerJitterThreshold: CGFloat = 2
     var onVisibilityChange: ((Bool) -> Void)?
     var onWillCommit: (() -> Void)?
@@ -62,6 +63,8 @@ final class SwitcherViewModel: ObservableObject {
         advanceImmediately: Bool = false,
         pointerPosition: CGPoint = NSEvent.mouseLocation
     ) {
+        pendingActivation?.cancel()
+        pendingActivation = nil
         self.mode = mode
         query = ""
         rebuildResults(preserveSelection: false)
@@ -143,7 +146,10 @@ final class SwitcherViewModel: ObservableObject {
             learnedSearch.learn(query: query, identity: result.item.searchIdentity)
         }
         dismiss()
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.04) { [repository] in
+        pendingActivation?.cancel()
+        pendingActivation = Task { [repository] in
+            try? await Task.sleep(for: .milliseconds(40))
+            guard !Task.isCancelled else { return }
             repository.activate(result.item)
         }
     }

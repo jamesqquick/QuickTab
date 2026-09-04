@@ -217,12 +217,30 @@ final class SwitcherViewModelTests: XCTestCase {
         let (viewModel, repository) = makeViewModel(windows: [first, second])
         let activated = expectation(description: "Exact window activated")
         repository.onActivate = { activated.fulfill() }
+        var wasVisibleAtWillCommit: Bool?
+        viewModel.onWillCommit = { wasVisibleAtWillCommit = viewModel.isVisible }
 
         viewModel.present(.recent, pointerPosition: .zero)
         viewModel.commit(second.id)
 
+        XCTAssertEqual(wasVisibleAtWillCommit, true)
+        XCTAssertFalse(viewModel.isVisible)
         await fulfillment(of: [activated], timeout: 1)
         XCTAssertEqual(repository.activatedWindowIDs, [second.id])
+    }
+
+    func testNewPresentationCancelsPendingActivationFromPreviousCommit() async throws {
+        let first = window("first")
+        let second = window("second")
+        let (viewModel, repository) = makeViewModel(windows: [first, second])
+
+        viewModel.present(.recent, pointerPosition: .zero)
+        viewModel.commit(first.id)
+        viewModel.present(.search, pointerPosition: .zero)
+        try await Task.sleep(for: .milliseconds(80))
+
+        XCTAssertTrue(repository.activatedWindowIDs.isEmpty)
+        XCTAssertTrue(viewModel.isVisible)
     }
 
     private func makeViewModel(

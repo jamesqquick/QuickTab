@@ -100,6 +100,7 @@ struct SwitcherView: View {
                     .padding(.vertical, 10)
                 }
                 .scrollIndicators(.hidden)
+                .scrollDisabled(true)
                 .onReceive(viewModel.$scrollRequest) { request in
                     guard let request else { return }
                     if request.animated {

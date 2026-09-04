@@ -24,6 +24,10 @@ final class SwitcherPanelController {
         panels.forEach { $0.orderOut(nil) }
     }
 
+    func contains(_ screenPoint: CGPoint) -> Bool {
+        panels.contains { $0.frame.contains(screenPoint) }
+    }
+
     private func rebuildPanels() {
         panels.forEach { $0.close() }
         panels.removeAll()

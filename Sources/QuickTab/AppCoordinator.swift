@@ -31,7 +31,7 @@ final class AppCoordinator: NSObject, GlobalInputHandler {
     func start() {
         NSApp.applicationIconImage = AppIcon.make()
         _ = switcherPanel
-        viewModel.onWillCommit = { [weak self] in self?.cancelEdgeGestureCommit() }
+        viewModel.onWillCommit = { [weak self] in self?.cancelSwitcherSession() }
         input.handler = self
         updateInputConfiguration()
         repository.start { [weak self] in
@@ -98,22 +98,30 @@ final class AppCoordinator: NSObject, GlobalInputHandler {
     }
 
     func commitSwitcherSelection() {
-        cancelEdgeGestureCommit()
+        cancelSwitcherSession()
         viewModel.commit()
     }
 
     func dismissSwitcher() {
-        cancelEdgeGestureCommit()
+        cancelSwitcherSession()
         viewModel.dismiss()
     }
 
     func performSwitcherAction(_ action: WindowAction) {
         cancelEdgeGestureCommit()
+        if action == .minimize || action == .hideApplication {
+            input.cancelActiveSwitcherSession()
+        }
         viewModel.perform(action, keepVisible: action == .close || action == .quitApplication)
     }
 
     func pointerMoved(to point: CGPoint) {
         sidebar.handlePointer(at: point)
+    }
+
+    func pointerPressed(at point: CGPoint) {
+        guard viewModel.isVisible, !switcherPanel.contains(point) else { return }
+        dismissSwitcher()
     }
 
     func edgeScrolled(delta: Double) {
@@ -176,6 +184,11 @@ final class AppCoordinator: NSObject, GlobalInputHandler {
     private func cancelEdgeGestureCommit() {
         edgeGestureCommit?.cancel()
         edgeGestureCommit = nil
+    }
+
+    private func cancelSwitcherSession() {
+        input.cancelActiveSwitcherSession()
+        cancelEdgeGestureCommit()
     }
 
     private func configureMenuBar() {

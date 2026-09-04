@@ -21,18 +21,14 @@ protocol GlobalInputHandler: AnyObject {
     func dismissSwitcher()
     func performSwitcherAction(_ action: WindowAction)
     func pointerMoved(to point: CGPoint)
+    func pointerPressed(at point: CGPoint)
     func edgeScrolled(delta: Double)
 }
 
 final class GlobalInputController {
     weak var handler: GlobalInputHandler?
     var configuration = GlobalInputConfiguration() {
-        didSet {
-            if !configuration.enableFastSearch {
-                fastModifierHeld = false
-                fastSearchActive = false
-            }
-        }
+        didSet { cancelActiveSwitcherSession() }
     }
 
     private var eventTap: CFMachPort?
@@ -46,12 +42,31 @@ final class GlobalInputController {
     private var edgeGestureRecognized = false
     private var lastEdgeScrollAt = Date.distantPast
     private var presentationPending = false
+    private let mouseLocation: () -> CGPoint
+    private let outerDisplayEdgePredicate: (CGPoint) -> Bool
 
     var isInstalled: Bool { eventTap != nil }
 
+    init(
+        mouseLocation: @escaping () -> CGPoint = { NSEvent.mouseLocation },
+        isAtOuterDisplayEdge: ((CGPoint) -> Bool)? = nil
+    ) {
+        self.mouseLocation = mouseLocation
+        outerDisplayEdgePredicate = isAtOuterDisplayEdge ?? Self.isAtOuterDisplayEdge
+    }
+
     func install() -> Bool {
         if isInstalled { return true }
-        let types: [CGEventType] = [.keyDown, .keyUp, .flagsChanged, .mouseMoved, .scrollWheel]
+        let types: [CGEventType] = [
+            .keyDown,
+            .keyUp,
+            .flagsChanged,
+            .mouseMoved,
+            .leftMouseDown,
+            .rightMouseDown,
+            .otherMouseDown,
+            .scrollWheel,
+        ]
         let mask = types.reduce(CGEventMask(0)) { $0 | (CGEventMask(1) << $1.rawValue) }
         guard let tap = CGEvent.tapCreate(
             tap: .cgSessionEventTap,
@@ -75,10 +90,7 @@ final class GlobalInputController {
         if let runLoopSource { CFRunLoopRemoveSource(CFRunLoopGetMain(), runLoopSource, .commonModes) }
         runLoopSource = nil
         eventTap = nil
-        cyclingModifier = nil
-        fastModifierHeld = false
-        fastSearchActive = false
-        presentationPending = false
+        cancelActiveSwitcherSession()
     }
 
     private static let eventCallback: CGEventTapCallBack = { _, type, event, userInfo in
@@ -89,12 +101,13 @@ final class GlobalInputController {
 
     func handle(type: CGEventType, event: CGEvent) -> Bool {
         if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
+            cancelActiveSwitcherSession()
             if let eventTap { CGEvent.tapEnable(tap: eventTap, enable: true) }
             return false
         }
 
         if type == .mouseMoved {
-            let location = NSEvent.mouseLocation
+            let location = mouseLocation()
             pendingMousePoint = location
             if !mouseUpdateScheduled {
                 mouseUpdateScheduled = true
@@ -109,37 +122,46 @@ final class GlobalInputController {
             return false
         }
 
-        if type == .scrollWheel, isSwitcherVisible {
-            let delta = event.getDoubleValueField(.scrollWheelEventDeltaAxis1)
-            if abs(delta) >= 0.1 {
-                onMain { $0.moveSwitcherSelection(by: delta < 0 ? 1 : -1) }
-                return true
-            }
+        if type == .leftMouseDown || type == .rightMouseDown || type == .otherMouseDown {
+            onMain { $0.pointerPressed(at: self.mouseLocation()) }
             return false
         }
 
         if type == .scrollWheel {
-            let location = NSEvent.mouseLocation
-            let delta = event.getDoubleValueField(.scrollWheelEventDeltaAxis1)
-            if isAtOuterDisplayEdge(location), abs(delta) >= 0.1 {
-                let now = Date()
-                if now.timeIntervalSince(lastEdgeScrollAt) > 0.45 {
-                    edgeScrollAccumulator = 0
-                    edgeGestureRecognized = false
+            let location = mouseLocation()
+            let delta = event.scrollDelta
+            guard abs(delta) >= 0.1 else { return false }
+
+            let now = Date()
+            if edgeGestureRecognized {
+                guard now.timeIntervalSince(lastEdgeScrollAt) <= 0.45,
+                      outerDisplayEdgePredicate(location) else {
+                    resetEdgeGesture()
+                    return false
                 }
                 lastEdgeScrollAt = now
-                edgeScrollAccumulator += delta
-                if !edgeGestureRecognized, abs(edgeScrollAccumulator) >= 7 {
-                    edgeGestureRecognized = true
-                    onMain { $0.edgeScrolled(delta: self.edgeScrollAccumulator) }
-                } else if edgeGestureRecognized {
-                    onMain { $0.edgeScrolled(delta: delta) }
-                }
-                return edgeGestureRecognized
+                onMain { $0.edgeScrolled(delta: delta) }
+                return true
             }
-            edgeScrollAccumulator = 0
-            edgeGestureRecognized = false
-            return false
+
+            guard !isSwitcherVisible else {
+                resetEdgeGesture()
+                return false
+            }
+            guard outerDisplayEdgePredicate(location) else {
+                resetEdgeGesture()
+                return false
+            }
+            if now.timeIntervalSince(lastEdgeScrollAt) > 0.45 {
+                edgeScrollAccumulator = 0
+            }
+            lastEdgeScrollAt = now
+            edgeScrollAccumulator += delta
+            guard abs(edgeScrollAccumulator) >= 7 else { return false }
+
+            edgeGestureRecognized = true
+            onMain { $0.edgeScrolled(delta: self.edgeScrollAccumulator) }
+            return true
         }
 
         let keyCode = UInt16(event.getIntegerValueField(.keyboardEventKeycode))
@@ -153,18 +175,15 @@ final class GlobalInputController {
                     key: CGKeyCode(configuration.fastSearchModifier.keyCode)
                 )
                 if fastModifierHeld && !nowHeld && fastSearchActive {
-                    presentationPending = false
+                    cancelActiveSwitcherSession()
                     onMain { $0.commitSwitcherSelection() }
-                    fastSearchActive = false
-                    fastModifierHeld = false
                     return false
                 }
                 fastModifierHeld = nowHeld
             }
 
             if let cyclingModifier, !flags.contains(cyclingModifier) {
-                self.cyclingModifier = nil
-                presentationPending = false
+                cancelActiveSwitcherSession()
                 onMain { $0.commitSwitcherSelection() }
                 return false
             }
@@ -193,7 +212,7 @@ final class GlobalInputController {
         let normalizedFlags = flags.intersection([.maskCommand, .maskAlternate, .maskControl, .maskShift])
 
         if keyCode == KeyCode.space, normalizedFlags == .maskControl {
-            onMain { $0.presentSwitcher(mode: .search, advanceImmediately: false) }
+            presentSwitcher(mode: .search, advanceImmediately: false)
             return true
         }
 
@@ -204,6 +223,7 @@ final class GlobalInputController {
                 cyclingModifier = .maskCommand
                 presentSwitcher(mode: .recent, advanceImmediately: true)
             } else {
+                cyclingModifier = .maskCommand
                 onMain { $0.moveSwitcherSelection(by: flags.contains(.maskShift) ? -1 : 1) }
             }
             return true
@@ -217,6 +237,7 @@ final class GlobalInputController {
                 cyclingModifier = .maskAlternate
                 presentSwitcher(mode: .recent, advanceImmediately: true)
             } else {
+                cyclingModifier = .maskAlternate
                 onMain { $0.moveSwitcherSelection(by: flags.contains(.maskShift) ? -1 : 1) }
             }
             return true
@@ -229,6 +250,7 @@ final class GlobalInputController {
                 let pid = NSWorkspace.shared.frontmostApplication?.processIdentifier ?? 0
                 presentSwitcher(mode: .application(pid), advanceImmediately: true)
             } else {
+                cyclingModifier = .maskCommand
                 onMain { $0.moveSwitcherSelection(by: flags.contains(.maskShift) ? -1 : 1) }
             }
             return true
@@ -251,15 +273,11 @@ final class GlobalInputController {
             onMain { $0.moveSwitcherSelection(by: 1) }
             return true
         case KeyCode.returnKey:
-            cyclingModifier = nil
-            fastSearchActive = false
-            presentationPending = false
+            cancelActiveSwitcherSession()
             onMain { $0.commitSwitcherSelection() }
             return true
         case KeyCode.escape:
-            cyclingModifier = nil
-            fastSearchActive = false
-            presentationPending = false
+            cancelActiveSwitcherSession()
             onMain { $0.dismissSwitcher() }
             return true
         case KeyCode.delete:
@@ -270,13 +288,13 @@ final class GlobalInputController {
             onMain { $0.performSwitcherAction(.close) }
             return true
         case KeyCode.m where normalizedFlags == .maskCommand:
-            cyclingModifier = nil
-            presentationPending = false
+            guard event.getIntegerValueField(.keyboardEventAutorepeat) == 0 else { return true }
+            cancelActiveSwitcherSession()
             onMain { $0.performSwitcherAction(.minimize) }
             return true
         case KeyCode.h where normalizedFlags == .maskCommand:
-            cyclingModifier = nil
-            presentationPending = false
+            guard event.getIntegerValueField(.keyboardEventAutorepeat) == 0 else { return true }
+            cancelActiveSwitcherSession()
             onMain { $0.performSwitcherAction(.hideApplication) }
             return true
         case KeyCode.q where normalizedFlags == .maskCommand:
@@ -295,6 +313,14 @@ final class GlobalInputController {
         }
     }
 
+    func cancelActiveSwitcherSession() {
+        cyclingModifier = nil
+        fastModifierHeld = false
+        fastSearchActive = false
+        presentationPending = false
+        resetEdgeGesture()
+    }
+
     private var isSwitcherVisible: Bool {
         if presentationPending { return true }
         if Thread.isMainThread { return MainActor.assumeIsolated { handler?.isSwitcherVisible ?? false } }
@@ -310,13 +336,21 @@ final class GlobalInputController {
     }
 
     private func onMain(_ operation: @escaping @MainActor (GlobalInputHandler) -> Void) {
-        DispatchQueue.main.async { [weak self] in
-            guard let handler = self?.handler else { return }
-            operation(handler)
+        guard let handler else { return }
+        if Thread.isMainThread {
+            MainActor.assumeIsolated { operation(handler) }
+        } else {
+            DispatchQueue.main.sync { MainActor.assumeIsolated { operation(handler) } }
         }
     }
 
-    private func isAtOuterDisplayEdge(_ point: CGPoint) -> Bool {
+    private func resetEdgeGesture() {
+        edgeScrollAccumulator = 0
+        edgeGestureRecognized = false
+        lastEdgeScrollAt = .distantPast
+    }
+
+    private static func isAtOuterDisplayEdge(_ point: CGPoint) -> Bool {
         guard let screen = NSScreen.screens.first(where: { $0.frame.contains(point) }) else { return false }
         let atLeft = abs(point.x - screen.frame.minX) <= 6
         let atRight = abs(point.x - screen.frame.maxX) <= 6
@@ -366,6 +400,12 @@ private extension FastSearchModifier {
 }
 
 private extension CGEvent {
+    var scrollDelta: Double {
+        let pointDelta = getIntegerValueField(.scrollWheelEventPointDeltaAxis1)
+        if pointDelta != 0 { return Double(pointDelta) }
+        return getDoubleValueField(.scrollWheelEventDeltaAxis1)
+    }
+
     var text: String? {
         var length = 0
         keyboardGetUnicodeString(maxStringLength: 0, actualStringLength: &length, unicodeString: nil)
