@@ -29,7 +29,21 @@ final class SwitcherPanelController {
     }
 
     static func shouldDismissPointerPress(at screenPoint: CGPoint, panelFrames: [CGRect]) -> Bool {
-        !panelFrames.contains { $0.contains(screenPoint) }
+        !panelFrames.contains { containsVisibleContent(screenPoint, panelFrame: $0) }
+    }
+
+    static func containsVisibleContent(_ screenPoint: CGPoint, panelFrame: CGRect) -> Bool {
+        let contentFrame = panelFrame.insetBy(dx: 18, dy: 18)
+        guard contentFrame.width > 0,
+              contentFrame.height > 0,
+              contentFrame.contains(screenPoint) else { return false }
+
+        let radius = min(24, min(contentFrame.width, contentFrame.height) / 2)
+        let cornerCenterX = min(max(screenPoint.x, contentFrame.minX + radius), contentFrame.maxX - radius)
+        let cornerCenterY = min(max(screenPoint.y, contentFrame.minY + radius), contentFrame.maxY - radius)
+        let deltaX = screenPoint.x - cornerCenterX
+        let deltaY = screenPoint.y - cornerCenterY
+        return deltaX * deltaX + deltaY * deltaY <= radius * radius
     }
 
     private func rebuildPanels() {

@@ -190,6 +190,7 @@ final class GlobalInputControllerTests: XCTestCase {
         var location = CGPoint.zero
         let controller = GlobalInputController(mouseLocation: { location })
         let handler = InputHandlerSpy()
+        handler.isSwitcherVisible = true
         controller.handler = handler
 
         let presses: [(CGEventType, CGMouseButton, CGPoint)] = [
@@ -214,17 +215,61 @@ final class GlobalInputControllerTests: XCTestCase {
         XCTAssertEqual(handler.pointerPressPoints, presses.map { $0.2 })
     }
 
-    func testPanelFramePolicyKeepsInsideClickAndDismissesOutsideClick() {
-        let frames = [CGRect(x: 100, y: 100, width: 400, height: 300)]
+    func testHiddenPointerPressIsNotDeliveredAfterPresentation() async throws {
+        let location = CGPoint(x: 120, y: 240)
+        let controller = GlobalInputController(mouseLocation: { location })
+        let handler = InputHandlerSpy()
+        controller.handler = handler
 
-        XCTAssertFalse(SwitcherPanelController.shouldDismissPointerPress(
-            at: CGPoint(x: 300, y: 250),
-            panelFrames: frames
-        ))
-        XCTAssertTrue(SwitcherPanelController.shouldDismissPointerPress(
-            at: CGPoint(x: 50, y: 50),
-            panelFrames: frames
-        ))
+        XCTAssertFalse(controller.handle(type: .leftMouseDown, event: try makeMouseDownEvent()))
+        XCTAssertTrue(controller.handle(type: .keyDown, event: try makeKeyEvent(keyCode: 49, flags: .maskControl)))
+
+        await drainMainQueue()
+        XCTAssertTrue(handler.pointerPressPoints.isEmpty)
+        XCTAssertTrue(handler.isSwitcherVisible)
+    }
+
+    func testOldSessionPointerPressIsNotDeliveredToNewPresentation() async throws {
+        let location = CGPoint(x: 120, y: 240)
+        let controller = GlobalInputController(mouseLocation: { location })
+        let handler = InputHandlerSpy()
+        handler.isSwitcherVisible = true
+        controller.handler = handler
+
+        XCTAssertFalse(controller.handle(type: .leftMouseDown, event: try makeMouseDownEvent()))
+        controller.uninstall()
+        XCTAssertTrue(controller.handle(type: .keyDown, event: try makeKeyEvent(keyCode: 49, flags: .maskControl)))
+
+        await drainMainQueue()
+        XCTAssertTrue(handler.pointerPressPoints.isEmpty)
+        XCTAssertTrue(handler.isSwitcherVisible)
+    }
+
+    func testSameSessionPointerPressIsDelivered() async throws {
+        let location = CGPoint(x: 120, y: 240)
+        let controller = GlobalInputController(mouseLocation: { location })
+        let handler = InputHandlerSpy()
+        handler.isSwitcherVisible = true
+        controller.handler = handler
+
+        XCTAssertFalse(controller.handle(type: .leftMouseDown, event: try makeMouseDownEvent()))
+        XCTAssertTrue(handler.pointerPressPoints.isEmpty)
+
+        await drainMainQueue()
+        XCTAssertEqual(handler.pointerPressPoints, [location])
+    }
+
+    func testPanelPolicyHitTestsVisibleRoundedContent() {
+        let frame = CGRect(x: 100, y: 100, width: 400, height: 300)
+
+        XCTAssertTrue(SwitcherPanelController.containsVisibleContent(CGPoint(x: 300, y: 250), panelFrame: frame))
+        XCTAssertTrue(SwitcherPanelController.containsVisibleContent(CGPoint(x: 118, y: 250), panelFrame: frame))
+        XCTAssertFalse(SwitcherPanelController.containsVisibleContent(CGPoint(x: 110, y: 250), panelFrame: frame))
+        XCTAssertFalse(SwitcherPanelController.containsVisibleContent(CGPoint(x: 50, y: 50), panelFrame: frame))
+        XCTAssertFalse(SwitcherPanelController.containsVisibleContent(CGPoint(x: 120, y: 120), panelFrame: frame))
+        XCTAssertTrue(SwitcherPanelController.containsVisibleContent(CGPoint(x: 130, y: 130), panelFrame: frame))
+        XCTAssertFalse(SwitcherPanelController.shouldDismissPointerPress(at: CGPoint(x: 300, y: 250), panelFrames: [frame]))
+        XCTAssertTrue(SwitcherPanelController.shouldDismissPointerPress(at: CGPoint(x: 110, y: 250), panelFrames: [frame]))
     }
 
     func testRecognizedEdgeGestureContinuesRoutingAfterSwitcherBecomesVisible() async throws {
@@ -436,6 +481,15 @@ final class GlobalInputControllerTests: XCTestCase {
             wheel1: delta,
             wheel2: 0,
             wheel3: 0
+        ))
+    }
+
+    private func makeMouseDownEvent() throws -> CGEvent {
+        try XCTUnwrap(CGEvent(
+            mouseEventSource: nil,
+            mouseType: .leftMouseDown,
+            mouseCursorPosition: .zero,
+            mouseButton: .left
         ))
     }
 }

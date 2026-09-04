@@ -243,6 +243,36 @@ final class SwitcherViewModelTests: XCTestCase {
         XCTAssertTrue(viewModel.isVisible)
     }
 
+    func testDismissCancelsPendingActivationWhenAlreadyHidden() async throws {
+        let first = window("first")
+        let (viewModel, repository) = makeViewModel(windows: [first])
+
+        viewModel.present(.recent, pointerPosition: .zero)
+        viewModel.commit()
+        XCTAssertFalse(viewModel.isVisible)
+
+        viewModel.dismiss()
+        try await Task.sleep(for: .milliseconds(80))
+
+        XCTAssertTrue(repository.activatedWindowIDs.isEmpty)
+    }
+
+    func testInputSessionResetCancelsPendingActivationAfterCommit() async throws {
+        let first = window("first")
+        let (viewModel, repository) = makeViewModel(windows: [first])
+        let controller = GlobalInputController()
+        let handler = ViewModelInputHandler(viewModel: viewModel)
+        controller.handler = handler
+
+        viewModel.present(.recent, pointerPosition: .zero)
+        viewModel.commit()
+        controller.uninstall()
+        await drainMainQueue()
+        try await Task.sleep(for: .milliseconds(80))
+
+        XCTAssertTrue(repository.activatedWindowIDs.isEmpty)
+    }
+
     func testCommitByIDAfterCommandCyclingPreventsReleaseRecommit() async throws {
         try await assertCommitByIDCancelsHeldCyclingSession(
             flags: .maskCommand,
@@ -419,5 +449,5 @@ private final class ViewModelInputHandler: GlobalInputHandler {
     func pointerMoved(to point: CGPoint) {}
     func pointerPressed(at point: CGPoint) {}
     func edgeScrolled(delta: Double) {}
-    func inputSessionDidReset() {}
+    func inputSessionDidReset() { viewModel.dismiss() }
 }

@@ -26,6 +26,7 @@ protocol GlobalInputHandler: AnyObject {
     func inputSessionDidReset()
 }
 
+@MainActor
 final class GlobalInputController {
     weak var handler: GlobalInputHandler?
     var configuration = GlobalInputConfiguration() {
@@ -43,6 +44,7 @@ final class GlobalInputController {
     private var edgeGestureRecognized = false
     private var lastEdgeScrollAt = Date.distantPast
     private var presentationPending = false
+    private var presentationGeneration: UInt = 0
     private var endingActionKeyCode: UInt16?
     private let mouseLocation: () -> CGPoint
     private let outerDisplayEdgePredicate: (CGPoint) -> Bool
@@ -80,7 +82,13 @@ final class GlobalInputController {
             place: .headInsertEventTap,
             options: .defaultTap,
             eventsOfInterest: mask,
-            callback: Self.eventCallback,
+            callback: { _, type, event, userInfo in
+                guard let userInfo else { return Unmanaged.passUnretained(event) }
+                let controller = Unmanaged<GlobalInputController>.fromOpaque(userInfo).takeUnretainedValue()
+                return MainActor.assumeIsolated {
+                    controller.handle(type: type, event: event) ? nil : Unmanaged.passUnretained(event)
+                }
+            },
             userInfo: Unmanaged.passUnretained(self).toOpaque()
         ) else { return false }
 
@@ -98,12 +106,6 @@ final class GlobalInputController {
         runLoopSource = nil
         eventTap = nil
         resetActiveSwitcherSession(notifyHandler: true)
-    }
-
-    private static let eventCallback: CGEventTapCallBack = { _, type, event, userInfo in
-        guard let userInfo else { return Unmanaged.passUnretained(event) }
-        let controller = Unmanaged<GlobalInputController>.fromOpaque(userInfo).takeUnretainedValue()
-        return controller.handle(type: type, event: event) ? nil : Unmanaged.passUnretained(event)
     }
 
     func handle(type: CGEventType, event: CGEvent) -> Bool {
@@ -130,8 +132,15 @@ final class GlobalInputController {
         }
 
         if type == .leftMouseDown || type == .rightMouseDown || type == .otherMouseDown {
+            guard isSwitcherVisible else { return false }
             let location = mouseLocation()
-            enqueueHandlerWork { $0.pointerPressed(at: location) }
+            let generation = presentationGeneration
+            DispatchQueue.main.async { [weak self] in
+                guard let self,
+                      self.presentationGeneration == generation,
+                      let handler = self.handler else { return }
+                handler.pointerPressed(at: location)
+            }
             return false
         }
 
@@ -335,6 +344,7 @@ final class GlobalInputController {
     }
 
     private func resetActiveSwitcherSession(notifyHandler: Bool, clearEndingActionKey: Bool = true) {
+        presentationGeneration &+= 1
         cyclingModifier = nil
         fastModifierHeld = false
         fastSearchActive = false
@@ -349,12 +359,11 @@ final class GlobalInputController {
     }
 
     private var isSwitcherVisible: Bool {
-        if presentationPending { return true }
-        if Thread.isMainThread { return MainActor.assumeIsolated { handler?.isSwitcherVisible ?? false } }
-        return DispatchQueue.main.sync { MainActor.assumeIsolated { handler?.isSwitcherVisible ?? false } }
+        presentationPending || handler?.isSwitcherVisible == true
     }
 
     private func presentSwitcher(mode: SwitcherMode, advanceImmediately: Bool) {
+        presentationGeneration &+= 1
         presentationPending = true
         DispatchQueue.main.async { [weak self] in
             guard let self else { return }

@@ -155,6 +155,8 @@ final class SwitcherViewModel: ObservableObject {
     }
 
     func dismiss() {
+        pendingActivation?.cancel()
+        pendingActivation = nil
         guard isVisible else { return }
         isVisible = false
         onVisibilityChange?(false)

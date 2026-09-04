@@ -71,6 +71,7 @@ final class AppCoordinator: NSObject, GlobalInputHandler {
 
     func stop() {
         edgeGestureCommit?.cancel()
+        viewModel.dismiss()
         input.uninstall()
         repository.stop()
     }
