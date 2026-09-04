@@ -129,7 +129,8 @@ final class GlobalInputController {
         }
 
         if type == .leftMouseDown || type == .rightMouseDown || type == .otherMouseDown {
-            onMain { $0.pointerPressed(at: self.mouseLocation()) }
+            let location = mouseLocation()
+            enqueueHandlerWork { $0.pointerPressed(at: location) }
             return false
         }
 
@@ -146,7 +147,7 @@ final class GlobalInputController {
                     return false
                 }
                 lastEdgeScrollAt = now
-                onMain { $0.edgeScrolled(delta: delta) }
+                enqueueHandlerWork { $0.edgeScrolled(delta: delta) }
                 return true
             }
 
@@ -166,7 +167,8 @@ final class GlobalInputController {
             guard abs(edgeScrollAccumulator) >= 7 else { return false }
 
             edgeGestureRecognized = true
-            onMain { $0.edgeScrolled(delta: self.edgeScrollAccumulator) }
+            let accumulatedDelta = edgeScrollAccumulator
+            enqueueHandlerWork { $0.edgeScrolled(delta: accumulatedDelta) }
             return true
         }
 
@@ -179,7 +181,7 @@ final class GlobalInputController {
                 let nowHeld = modifierKeyState(CGKeyCode(configuration.fastSearchModifier.keyCode))
                 if fastModifierHeld && !nowHeld && fastSearchActive {
                     cancelActiveSwitcherSession()
-                    onMain { $0.commitSwitcherSelection() }
+                    enqueueHandlerWork { $0.commitSwitcherSelection() }
                     return false
                 }
                 fastModifierHeld = nowHeld
@@ -187,7 +189,7 @@ final class GlobalInputController {
 
             if let cyclingModifier, !flags.contains(cyclingModifier) {
                 cancelActiveSwitcherSession()
-                onMain { $0.commitSwitcherSelection() }
+                enqueueHandlerWork { $0.commitSwitcherSelection() }
                 return false
             }
             return false
@@ -208,7 +210,7 @@ final class GlobalInputController {
                 fastSearchActive = true
                 presentSwitcher(mode: .fastSearch, advanceImmediately: false)
             }
-            onMain { $0.appendSwitcherQuery(text) }
+            enqueueHandlerWork { $0.appendSwitcherQuery(text) }
             return true
         }
 
@@ -227,7 +229,7 @@ final class GlobalInputController {
                 presentSwitcher(mode: .recent, advanceImmediately: true)
             } else {
                 cyclingModifier = .maskCommand
-                onMain { $0.moveSwitcherSelection(by: flags.contains(.maskShift) ? -1 : 1) }
+                enqueueHandlerWork { $0.moveSwitcherSelection(by: flags.contains(.maskShift) ? -1 : 1) }
             }
             return true
         }
@@ -241,7 +243,7 @@ final class GlobalInputController {
                 presentSwitcher(mode: .recent, advanceImmediately: true)
             } else {
                 cyclingModifier = .maskAlternate
-                onMain { $0.moveSwitcherSelection(by: flags.contains(.maskShift) ? -1 : 1) }
+                enqueueHandlerWork { $0.moveSwitcherSelection(by: flags.contains(.maskShift) ? -1 : 1) }
             }
             return true
         }
@@ -254,7 +256,7 @@ final class GlobalInputController {
                 presentSwitcher(mode: .application(pid), advanceImmediately: true)
             } else {
                 cyclingModifier = .maskCommand
-                onMain { $0.moveSwitcherSelection(by: flags.contains(.maskShift) ? -1 : 1) }
+                enqueueHandlerWork { $0.moveSwitcherSelection(by: flags.contains(.maskShift) ? -1 : 1) }
             }
             return true
         }
@@ -264,52 +266,52 @@ final class GlobalInputController {
         if keyCode == KeyCode.s,
            cyclingModifier != nil,
            normalizedFlags == .maskCommand || normalizedFlags == .maskAlternate {
-            onMain { $0.beginSwitcherSearch() }
+            enqueueHandlerWork { $0.beginSwitcherSearch() }
             return true
         }
 
         switch keyCode {
         case KeyCode.up, KeyCode.k:
-            onMain { $0.moveSwitcherSelection(by: -1) }
+            enqueueHandlerWork { $0.moveSwitcherSelection(by: -1) }
             return true
         case KeyCode.down, KeyCode.j:
-            onMain { $0.moveSwitcherSelection(by: 1) }
+            enqueueHandlerWork { $0.moveSwitcherSelection(by: 1) }
             return true
         case KeyCode.returnKey:
             cancelActiveSwitcherSession()
-            onMain { $0.commitSwitcherSelection() }
+            enqueueHandlerWork { $0.commitSwitcherSelection() }
             return true
         case KeyCode.escape:
             cancelActiveSwitcherSession()
-            onMain { $0.dismissSwitcher() }
+            enqueueHandlerWork { $0.dismissSwitcher() }
             return true
         case KeyCode.delete:
-            onMain { $0.deleteSwitcherQueryCharacter() }
+            enqueueHandlerWork { $0.deleteSwitcherQueryCharacter() }
             return true
         case KeyCode.w where normalizedFlags == .maskCommand:
             guard event.getIntegerValueField(.keyboardEventAutorepeat) == 0 else { return true }
-            onMain { $0.performSwitcherAction(.close) }
+            enqueueHandlerWork { $0.performSwitcherAction(.close) }
             return true
         case KeyCode.m where normalizedFlags == .maskCommand:
             guard event.getIntegerValueField(.keyboardEventAutorepeat) == 0 else { return true }
             cancelActiveSwitcherSession()
-            onMain { $0.performSwitcherAction(.minimize) }
+            enqueueHandlerWork { $0.performSwitcherAction(.minimize) }
             return true
         case KeyCode.h where normalizedFlags == .maskCommand:
             guard event.getIntegerValueField(.keyboardEventAutorepeat) == 0 else { return true }
             cancelActiveSwitcherSession()
-            onMain { $0.performSwitcherAction(.hideApplication) }
+            enqueueHandlerWork { $0.performSwitcherAction(.hideApplication) }
             return true
         case KeyCode.q where normalizedFlags == .maskCommand:
             guard event.getIntegerValueField(.keyboardEventAutorepeat) == 0 else { return true }
-            onMain { $0.performSwitcherAction(.quitApplication) }
+            enqueueHandlerWork { $0.performSwitcherAction(.quitApplication) }
             return true
         default:
             if configuration.directTyping,
                (!flags.contains(.maskCommand) && !flags.contains(.maskAlternate) || cyclingModifier != nil),
                let text = event.text,
                !text.isEmpty {
-                onMain { $0.appendSwitcherQuery(text) }
+                enqueueHandlerWork { $0.appendSwitcherQuery(text) }
                 return true
             }
             return false
@@ -327,7 +329,7 @@ final class GlobalInputController {
         presentationPending = false
         resetEdgeGesture()
         if notifyHandler {
-            onMain { $0.inputSessionDidReset() }
+            enqueueHandlerWork { $0.inputSessionDidReset() }
         }
     }
 
@@ -339,18 +341,17 @@ final class GlobalInputController {
 
     private func presentSwitcher(mode: SwitcherMode, advanceImmediately: Bool) {
         presentationPending = true
-        onMain { [weak self] handler in
-            handler.presentSwitcher(mode: mode, advanceImmediately: advanceImmediately)
-            self?.presentationPending = false
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            self.handler?.presentSwitcher(mode: mode, advanceImmediately: advanceImmediately)
+            self.presentationPending = false
         }
     }
 
-    private func onMain(_ operation: @escaping @MainActor (GlobalInputHandler) -> Void) {
-        guard let handler else { return }
-        if Thread.isMainThread {
-            MainActor.assumeIsolated { operation(handler) }
-        } else {
-            DispatchQueue.main.sync { MainActor.assumeIsolated { operation(handler) } }
+    private func enqueueHandlerWork(_ operation: @escaping @MainActor (GlobalInputHandler) -> Void) {
+        DispatchQueue.main.async { [weak self] in
+            guard let handler = self?.handler else { return }
+            operation(handler)
         }
     }
 

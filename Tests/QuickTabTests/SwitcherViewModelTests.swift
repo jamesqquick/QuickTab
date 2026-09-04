@@ -281,6 +281,7 @@ final class SwitcherViewModelTests: XCTestCase {
             character.keyboardSetUnicodeString(stringLength: buffer.count, unicodeString: buffer.baseAddress)
         }
         XCTAssertTrue(controller.handle(type: .keyDown, event: character))
+        await drainMainQueue()
 
         viewModel.commit(second.id)
         functionKeyHeld = false
@@ -310,6 +311,7 @@ final class SwitcherViewModelTests: XCTestCase {
         let tab = try XCTUnwrap(CGEvent(keyboardEventSource: nil, virtualKey: 48, keyDown: true))
         tab.flags = flags
         XCTAssertTrue(controller.handle(type: .keyDown, event: tab))
+        await drainMainQueue()
 
         viewModel.commit(second.id)
         let releaseKey: CGKeyCode = flags == .maskAlternate ? 58 : 55
@@ -319,6 +321,12 @@ final class SwitcherViewModelTests: XCTestCase {
         await fulfillment(of: [activated], timeout: 1)
         XCTAssertEqual(repository.activatedWindowIDs, [second.id])
         XCTAssertEqual(handler.commitCount, 0)
+    }
+
+    private func drainMainQueue() async {
+        await withCheckedContinuation { continuation in
+            DispatchQueue.main.async { continuation.resume() }
+        }
     }
 
     private func makeViewModel(

@@ -137,6 +137,7 @@ final class AppCoordinator: NSObject, GlobalInputHandler {
 
     func inputSessionDidReset() {
         cancelEdgeGestureCommit()
+        viewModel.dismiss()
     }
 
     private var visibilityPreferences: VisibilityPreferences {
