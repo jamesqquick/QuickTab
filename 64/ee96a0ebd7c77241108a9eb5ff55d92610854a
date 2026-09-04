@@ -1,0 +1,21 @@
+Sources/QuickTab/AppCoordinator.swift
+  s_ab6dd1c171a270::t_638f16d2e535e3 82,132
+Sources/QuickTab/GlobalInputController.swift
+  s_ab6dd1c171a270::t_5bee52826a546a 2,346-350
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "64ee96a0ebd7c77241108a9eb5ff55d92610854a",
+  "prompts": {},
+  "sessions": {
+    "s_ab6dd1c171a270": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_f92ec9d51ffeO4osFjxLhjLv8V",
+        "model": "gpt-5.6-luna"
+      },
+      "human_author": "James Quick <jquick@cloudflare.com>"
+    }
+  }
+}
