@@ -108,28 +108,6 @@ final class SwitcherViewModelTests: XCTestCase {
         )
     }
 
-    func testQueryChangeAndResetRequestImmediateRevealForNewSelection() {
-        let first = window("first")
-        let second = window("second")
-        let (viewModel, _) = makeViewModel(windows: [first, second])
-        viewModel.present(.recent, pointerPosition: .zero)
-        var requests: [SwitcherViewModel.ScrollRequest] = []
-        let cancellable = viewModel.$scrollRequest
-            .dropFirst()
-            .compactMap { $0 }
-            .sink { requests.append($0) }
-
-        viewModel.appendToQuery("second")
-        viewModel.query = ""
-
-        XCTAssertEqual(viewModel.selectedWindowID, first.id)
-        XCTAssertEqual(requests, [
-            SwitcherViewModel.ScrollRequest(windowID: second.id, animated: false),
-            SwitcherViewModel.ScrollRequest(windowID: first.id, animated: false),
-        ])
-        withExtendedLifetime(cancellable) {}
-    }
-
     func testPointerSelectionDoesNotRequestProgrammaticScroll() {
         let first = window("first")
         let second = window("second")
@@ -236,7 +214,7 @@ final class SwitcherViewModelTests: XCTestCase {
 
         viewModel.present(.recent, pointerPosition: .zero)
         viewModel.commit(first.id)
-        viewModel.present(.search, pointerPosition: .zero)
+        viewModel.present(.recent, pointerPosition: .zero)
         try await Task.sleep(for: .milliseconds(80))
 
         XCTAssertTrue(repository.activatedWindowIDs.isEmpty)
@@ -283,44 +261,8 @@ final class SwitcherViewModelTests: XCTestCase {
     func testCommitByIDAfterOptionCyclingPreventsReleaseRecommit() async throws {
         try await assertCommitByIDCancelsHeldCyclingSession(
             flags: .maskAlternate,
-            configuration: GlobalInputConfiguration(enableOptionTab: true, enableFastSearch: false)
+            configuration: GlobalInputConfiguration(enableOptionTab: true)
         )
-    }
-
-    func testCommitByIDDuringFnFastSearchPreventsReleaseRecommit() async throws {
-        let first = window("first")
-        let second = window("second")
-        let (viewModel, repository) = makeViewModel(windows: [first, second])
-        var functionKeyHeld = true
-        let controller = GlobalInputController(modifierKeyState: { _ in functionKeyHeld })
-        let handler = ViewModelInputHandler(viewModel: viewModel)
-        let activated = expectation(description: "Exact pointer-selected window activated")
-        repository.onActivate = { activated.fulfill() }
-        controller.configuration = GlobalInputConfiguration(fastSearchModifier: .function)
-        controller.handler = handler
-        viewModel.onWillCommit = { controller.cancelActiveSwitcherSession() }
-
-        let functionDown = try XCTUnwrap(CGEvent(keyboardEventSource: nil, virtualKey: 63, keyDown: true))
-        functionDown.flags = .maskSecondaryFn
-        XCTAssertFalse(controller.handle(type: .flagsChanged, event: functionDown))
-
-        let character = try XCTUnwrap(CGEvent(keyboardEventSource: nil, virtualKey: 14, keyDown: true))
-        character.flags = .maskSecondaryFn
-        let characters = Array("e".utf16)
-        characters.withUnsafeBufferPointer { buffer in
-            character.keyboardSetUnicodeString(stringLength: buffer.count, unicodeString: buffer.baseAddress)
-        }
-        XCTAssertTrue(controller.handle(type: .keyDown, event: character))
-        await drainMainQueue()
-
-        viewModel.commit(second.id)
-        functionKeyHeld = false
-        let functionUp = try XCTUnwrap(CGEvent(keyboardEventSource: nil, virtualKey: 63, keyDown: false))
-        XCTAssertFalse(controller.handle(type: .flagsChanged, event: functionUp))
-
-        await fulfillment(of: [activated], timeout: 1)
-        XCTAssertEqual(repository.activatedWindowIDs, [second.id])
-        XCTAssertEqual(handler.commitCount, 0)
     }
 
     private func assertCommitByIDCancelsHeldCyclingSession(
@@ -364,11 +306,7 @@ final class SwitcherViewModelTests: XCTestCase {
         activeWindowID: WindowID? = nil
     ) -> (SwitcherViewModel, TestWindowRepository) {
         let repository = TestWindowRepository(windows: windows, activeWindowID: activeWindowID)
-        let defaults = UserDefaults(suiteName: "SwitcherViewModelTests.\(UUID().uuidString)")!
-        let viewModel = SwitcherViewModel(
-            repository: repository,
-            learnedSearch: LearnedSearchStore(defaults: defaults)
-        )
+        let viewModel = SwitcherViewModel(repository: repository)
         return (viewModel, repository)
     }
 
@@ -437,8 +375,6 @@ private final class ViewModelInputHandler: GlobalInputHandler {
     }
 
     func moveSwitcherSelection(by offset: Int) { viewModel.moveSelection(by: offset) }
-    func appendSwitcherQuery(_ text: String) { viewModel.appendToQuery(text) }
-    func deleteSwitcherQueryCharacter() { viewModel.deleteBackward() }
     func commitSwitcherSelection() {
         commitCount += 1
         viewModel.commit()

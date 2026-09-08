@@ -4,8 +4,6 @@ import AppKit
 struct GlobalInputConfiguration {
     var replaceCommandTab = true
     var enableOptionTab = false
-    var enableFastSearch = true
-    var fastSearchModifier = FastSearchModifier.rightOption
 }
 
 @MainActor
@@ -13,8 +11,6 @@ protocol GlobalInputHandler: AnyObject {
     var isSwitcherVisible: Bool { get }
     func presentSwitcher(mode: SwitcherMode, advanceImmediately: Bool)
     func moveSwitcherSelection(by offset: Int)
-    func appendSwitcherQuery(_ text: String)
-    func deleteSwitcherQueryCharacter()
     func commitSwitcherSelection()
     func dismissSwitcher()
     func performSwitcherAction(_ action: WindowAction)
@@ -32,24 +28,17 @@ final class GlobalInputController {
     private var eventTap: CFMachPort?
     private var runLoopSource: CFRunLoopSource?
     private var cyclingModifier: CGEventFlags?
-    private var fastModifierHeld = false
-    private var fastSearchActive = false
     private var presentationPending = false
     private var presentationGeneration: UInt = 0
     private var endingActionKeyCode: UInt16?
     private let mouseLocation: () -> CGPoint
-    private let modifierKeyState: (CGKeyCode) -> Bool
 
     var isInstalled: Bool { eventTap != nil }
 
     init(
-        mouseLocation: @escaping () -> CGPoint = { NSEvent.mouseLocation },
-        modifierKeyState: @escaping (CGKeyCode) -> Bool = {
-            CGEventSource.keyState(.combinedSessionState, key: $0)
-        }
+        mouseLocation: @escaping () -> CGPoint = { NSEvent.mouseLocation }
     ) {
         self.mouseLocation = mouseLocation
-        self.modifierKeyState = modifierKeyState
     }
 
     func install() -> Bool {
@@ -118,17 +107,6 @@ final class GlobalInputController {
         let flags = event.flags
 
         if type == .flagsChanged {
-            if configuration.enableFastSearch,
-               keyCode == configuration.fastSearchModifier.keyCode {
-                let nowHeld = modifierKeyState(CGKeyCode(configuration.fastSearchModifier.keyCode))
-                if fastModifierHeld && !nowHeld && fastSearchActive {
-                    cancelActiveSwitcherSession()
-                    enqueueHandlerWork { $0.commitSwitcherSelection() }
-                    return false
-                }
-                fastModifierHeld = nowHeld
-            }
-
             if let cyclingModifier, !flags.contains(cyclingModifier) {
                 cancelActiveSwitcherSession()
                 enqueueHandlerWork { $0.commitSwitcherSelection() }
@@ -152,25 +130,7 @@ final class GlobalInputController {
             return true
         }
 
-        if configuration.enableFastSearch,
-           fastModifierHeld,
-           !flags.contains(.maskCommand),
-           let text = event.text,
-           text.rangeOfCharacter(from: .alphanumerics) != nil {
-            if !fastSearchActive {
-                fastSearchActive = true
-                presentSwitcher(mode: .fastSearch, advanceImmediately: false)
-            }
-            enqueueHandlerWork { $0.appendSwitcherQuery(text) }
-            return true
-        }
-
         let normalizedFlags = flags.intersection([.maskCommand, .maskAlternate, .maskControl, .maskShift])
-
-        if keyCode == KeyCode.space, normalizedFlags == .maskControl {
-            presentSwitcher(mode: .search, advanceImmediately: false)
-            return true
-        }
 
         if keyCode == KeyCode.tab,
            normalizedFlags == .maskCommand || normalizedFlags == [.maskCommand, .maskShift],
@@ -187,8 +147,7 @@ final class GlobalInputController {
 
         if keyCode == KeyCode.tab,
            normalizedFlags == .maskAlternate || normalizedFlags == [.maskAlternate, .maskShift],
-           configuration.enableOptionTab,
-           (!configuration.enableFastSearch || !fastModifierHeld) {
+           configuration.enableOptionTab {
             if !isSwitcherVisible {
                 cyclingModifier = .maskAlternate
                 presentSwitcher(mode: .recent, advanceImmediately: true)
@@ -229,9 +188,6 @@ final class GlobalInputController {
             cancelActiveSwitcherSession()
             enqueueHandlerWork { $0.dismissSwitcher() }
             return true
-        case KeyCode.delete:
-            enqueueHandlerWork { $0.deleteSwitcherQueryCharacter() }
-            return true
         case KeyCode.w where normalizedFlags == .maskCommand:
             guard event.getIntegerValueField(.keyboardEventAutorepeat) == 0 else { return true }
             enqueueHandlerWork { $0.performSwitcherAction(.close) }
@@ -253,12 +209,6 @@ final class GlobalInputController {
             enqueueHandlerWork { $0.performSwitcherAction(.quitApplication) }
             return true
         default:
-            if cyclingModifier == nil,
-               let text = event.text,
-               !text.isEmpty {
-                enqueueHandlerWork { $0.appendSwitcherQuery(text) }
-                return true
-            }
             return false
         }
     }
@@ -275,8 +225,6 @@ final class GlobalInputController {
     private func resetActiveSwitcherSession(notifyHandler: Bool, clearEndingActionKey: Bool = true) {
         presentationGeneration &+= 1
         cyclingModifier = nil
-        fastModifierHeld = false
-        fastSearchActive = false
         presentationPending = false
         if clearEndingActionKey {
             endingActionKeyCode = nil
@@ -312,9 +260,7 @@ final class GlobalInputController {
 private enum KeyCode {
     static let returnKey: UInt16 = 36
     static let tab: UInt16 = 48
-    static let space: UInt16 = 49
     static let grave: UInt16 = 50
-    static let delete: UInt16 = 51
     static let escape: UInt16 = 53
     static let h: UInt16 = 4
     static let q: UInt16 = 12
@@ -322,32 +268,4 @@ private enum KeyCode {
     static let m: UInt16 = 46
     static let down: UInt16 = 125
     static let up: UInt16 = 126
-}
-
-private extension FastSearchModifier {
-    var keyCode: UInt16 {
-        switch self {
-        case .rightOption: 61
-        case .leftOption: 58
-        case .function: 63
-        }
-    }
-
-    var eventFlag: CGEventFlags {
-        switch self {
-        case .rightOption, .leftOption: .maskAlternate
-        case .function: .maskSecondaryFn
-        }
-    }
-}
-
-private extension CGEvent {
-    var text: String? {
-        var length = 0
-        keyboardGetUnicodeString(maxStringLength: 0, actualStringLength: &length, unicodeString: nil)
-        guard length > 0 else { return nil }
-        var characters = [UniChar](repeating: 0, count: length)
-        keyboardGetUnicodeString(maxStringLength: length, actualStringLength: &length, unicodeString: &characters)
-        return String(utf16CodeUnits: characters, count: length)
-    }
 }

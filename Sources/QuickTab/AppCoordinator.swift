@@ -8,8 +8,7 @@ final class AppCoordinator: NSObject, GlobalInputHandler {
     private let updaterController: SPUStandardUpdaterController
     private let settings = SettingsStore()
     private let repository = WindowRepository()
-    private let learnedSearch = LearnedSearchStore()
-    private lazy var viewModel = SwitcherViewModel(repository: repository, learnedSearch: learnedSearch)
+    private lazy var viewModel = SwitcherViewModel(repository: repository)
     private lazy var switcherPanel = SwitcherPanelController(viewModel: viewModel, settings: settings)
     private let input = GlobalInputController()
 
@@ -82,14 +81,6 @@ final class AppCoordinator: NSObject, GlobalInputHandler {
         viewModel.moveSelection(by: offset)
     }
 
-    func appendSwitcherQuery(_ text: String) {
-        viewModel.appendToQuery(text)
-    }
-
-    func deleteSwitcherQueryCharacter() {
-        viewModel.deleteBackward()
-    }
-
     func commitSwitcherSelection() {
         cancelSwitcherSession()
         viewModel.commit()
@@ -141,9 +132,7 @@ final class AppCoordinator: NSObject, GlobalInputHandler {
     private func updateInputConfiguration() {
         input.configuration = GlobalInputConfiguration(
             replaceCommandTab: settings.replaceCommandTab,
-            enableOptionTab: settings.enableOptionTab,
-            enableFastSearch: settings.enableFastSearch,
-            fastSearchModifier: settings.fastSearchModifier
+            enableOptionTab: settings.enableOptionTab
         )
     }
 
@@ -188,7 +177,6 @@ final class AppCoordinator: NSObject, GlobalInputHandler {
         )
         menu.addItem(status)
         menu.addItem(.separator())
-        menu.addItem(withTitle: "Search Windows", action: #selector(showSearch), keyEquivalent: " ").target = self
         menu.addItem(withTitle: "Refresh Windows", action: #selector(refreshWindows), keyEquivalent: "r").target = self
         menu.addItem(.separator())
         menu.addItem(withTitle: "Settings…", action: #selector(showSettings), keyEquivalent: ",").target = self
@@ -206,10 +194,6 @@ final class AppCoordinator: NSObject, GlobalInputHandler {
         menu.addItem(.separator())
         menu.addItem(withTitle: "Quit QuickTab", action: #selector(quit), keyEquivalent: "q").target = self
         statusItem?.menu = menu
-    }
-
-    @objc private func showSearch() {
-        presentSwitcher(mode: .search, advanceImmediately: false)
     }
 
     @objc private func refreshWindows() {

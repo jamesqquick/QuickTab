@@ -40,26 +40,9 @@ struct SwitcherView: View {
                     .font(.system(size: 10, weight: .bold, design: .rounded))
                     .tracking(1.7)
                     .foregroundStyle(QuickTabTheme.electric)
-                HStack(spacing: 6) {
-                    if showsQueryCursor && viewModel.query.isEmpty {
-                        BlinkingCursor()
-                    }
-                    Text(queryLabel)
-                        .font(.system(
-                            size: 22,
-                            weight: viewModel.query.isEmpty ? .regular : .semibold,
-                            design: .rounded
-                        ))
-                        .foregroundStyle(
-                            viewModel.query.isEmpty
-                                ? QuickTabTheme.paperMuted.opacity(0.78)
-                                : QuickTabTheme.paper
-                        )
-                        .lineLimit(1)
-                    if showsQueryCursor && !viewModel.query.isEmpty {
-                        BlinkingCursor()
-                    }
-                }
+                Text("Select a window")
+                    .font(.system(size: 22, weight: .semibold, design: .rounded))
+                    .foregroundStyle(QuickTabTheme.paper)
             }
 
             Spacer()
@@ -72,27 +55,6 @@ struct SwitcherView: View {
         }
         .padding(.horizontal, 22)
         .padding(.vertical, 19)
-    }
-
-    private var queryLabel: String {
-        guard viewModel.query.isEmpty else { return viewModel.query }
-        switch viewModel.mode {
-        case .search:
-            return "Where do you want to go?"
-        case .fastSearch:
-            return "Type to search..."
-        case .recent, .application:
-            return "Select a window"
-        }
-    }
-
-    private var showsQueryCursor: Bool {
-        switch viewModel.mode {
-        case .search, .fastSearch:
-            true
-        case .recent, .application:
-            false
-        }
     }
 
     @ViewBuilder
@@ -154,8 +116,6 @@ struct SwitcherView: View {
 
     private var footer: some View {
         HStack(spacing: 8) {
-            Keycap(label: "⌃Space")
-            Text("search")
             Keycap(label: "↑↓")
             Text("navigate")
             Keycap(label: "↩")
@@ -174,26 +134,8 @@ struct SwitcherView: View {
     }
 }
 
-private struct BlinkingCursor: View {
-    @State private var isVisible = true
-
-    var body: some View {
-        Rectangle()
-            .fill(QuickTabTheme.electric)
-            .frame(width: 2, height: 23)
-            .opacity(isVisible ? 1 : 0)
-            .onAppear {
-                DispatchQueue.main.async {
-                    withAnimation(.easeInOut(duration: 0.65).repeatForever(autoreverses: true)) {
-                        isVisible = false
-                    }
-                }
-            }
-    }
-}
-
 private struct SwitcherRow: View {
-    let result: SearchResult
+    let result: WindowResult
     let isSelected: Bool
     let onHover: (CGPoint) -> Void
     let onHoverEnded: (CGPoint) -> Void
@@ -209,14 +151,10 @@ private struct SwitcherRow: View {
                     .shadow(color: Color.black.opacity(0.22), radius: 4, y: 2)
 
                 VStack(alignment: .leading, spacing: 3) {
-                    HighlightedText(
-                        value: result.item.title,
-                        highlighted: result.matchedTitleIndices,
-                        baseColor: QuickTabTheme.paper,
-                        highlightColor: QuickTabTheme.electric
-                    )
-                    .font(.system(size: 15, weight: .semibold, design: .rounded))
-                    .lineLimit(1)
+                    Text(result.item.title)
+                        .font(.system(size: 15, weight: .semibold, design: .rounded))
+                        .foregroundStyle(QuickTabTheme.paper)
+                        .lineLimit(1)
 
                     HStack(spacing: 7) {
                         Text(result.item.subtitle)
@@ -273,20 +211,5 @@ private struct StatusPill: View {
             .padding(.horizontal, 6)
             .padding(.vertical, 2)
             .background(color.opacity(0.12), in: Capsule())
-    }
-}
-
-private struct HighlightedText: View {
-    let value: String
-    let highlighted: IndexSet
-    let baseColor: Color
-    let highlightColor: Color
-
-    var body: some View {
-        value.enumerated().reduce(Text("")) { partial, pair in
-            partial + Text(String(pair.element))
-                .foregroundColor(highlighted.contains(pair.offset) ? highlightColor : baseColor)
-                .fontWeight(highlighted.contains(pair.offset) ? .bold : .regular)
-        }
     }
 }

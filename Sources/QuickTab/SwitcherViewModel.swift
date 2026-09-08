@@ -8,16 +8,13 @@ final class SwitcherViewModel: ObservableObject {
         let animated: Bool
     }
 
-    @Published private(set) var results: [SearchResult] = []
+    @Published private(set) var results: [WindowResult] = []
     @Published private(set) var selectedWindowID: WindowID?
     @Published private(set) var scrollRequest: ScrollRequest?
     @Published private(set) var mode: SwitcherMode = .recent
     @Published private(set) var isVisible = false
-    @Published var query = "" {
-        didSet { rebuildResults(preserveSelection: false) }
-    }
 
-    var selectedResult: SearchResult? {
+    var selectedResult: WindowResult? {
         guard let selectedWindowID else { return nil }
         return results.first { $0.item.id == selectedWindowID }
     }
@@ -31,13 +28,10 @@ final class SwitcherViewModel: ObservableObject {
         switch mode {
         case .recent: "RECENT WINDOWS"
         case .application: "CURRENT APP"
-        case .search: "WINDOW SEARCH"
-        case .fastSearch: "FAST SEARCH"
         }
     }
 
     private let repository: any WindowRepositoryProtocol
-    private let learnedSearch: LearnedSearchStore
     private var allWindows: [WindowItem] = []
     private var cancellables: Set<AnyCancellable> = []
     private var pointerAnchor: CGPoint?
@@ -46,9 +40,8 @@ final class SwitcherViewModel: ObservableObject {
     var onVisibilityChange: ((Bool) -> Void)?
     var onWillCommit: (() -> Void)?
 
-    init(repository: any WindowRepositoryProtocol, learnedSearch: LearnedSearchStore) {
+    init(repository: any WindowRepositoryProtocol) {
         self.repository = repository
-        self.learnedSearch = learnedSearch
         repository.windowsPublisher
             .sink { [weak self] windows in
                 guard let self else { return }
@@ -66,7 +59,6 @@ final class SwitcherViewModel: ObservableObject {
         pendingActivation?.cancel()
         pendingActivation = nil
         self.mode = mode
-        query = ""
         rebuildResults(preserveSelection: false)
         if advanceImmediately, results.count > 1 {
             if let activeIndex = results.firstIndex(where: { $0.item.id == repository.activeWindowID }) {
@@ -85,19 +77,6 @@ final class SwitcherViewModel: ObservableObject {
         onVisibilityChange?(true)
     }
 
-    func appendToQuery(_ value: String) {
-        guard value.unicodeScalars.allSatisfy({ !CharacterSet.controlCharacters.contains($0) }) else { return }
-        if mode == .recent || isApplicationMode {
-            mode = .search
-        }
-        query.append(contentsOf: value)
-    }
-
-    func deleteBackward() {
-        guard !query.isEmpty else { return }
-        query.removeLast()
-    }
-
     func moveSelection(by offset: Int) {
         guard !results.isEmpty else { return }
         let index = ((selectedIndex + offset) % results.count + results.count) % results.count
@@ -106,7 +85,7 @@ final class SwitcherViewModel: ObservableObject {
     }
 
     func handlePointerHover(over id: WindowID, at point: CGPoint) {
-        guard isVisible, results.contains(where: { $0.item.id == id }) else { return }
+        guard isVisible, results.contains(where: { $0.id == id }) else { return }
         guard let pointerAnchor else {
             self.pointerAnchor = point
             return
@@ -130,15 +109,12 @@ final class SwitcherViewModel: ObservableObject {
         commit(results.first { $0.item.id == id })
     }
 
-    private func commit(_ result: SearchResult?) {
+    private func commit(_ result: WindowResult?) {
         guard isVisible else { return }
         onWillCommit?()
         guard let result else {
             dismiss()
             return
-        }
-        if !query.isEmpty {
-            learnedSearch.learn(query: query, identity: result.item.searchIdentity)
         }
         dismiss()
         pendingActivation?.cancel()
@@ -176,11 +152,6 @@ final class SwitcherViewModel: ObservableObject {
         }
     }
 
-    private var isApplicationMode: Bool {
-        if case .application = mode { return true }
-        return false
-    }
-
     private func rebuildResults(preserveSelection: Bool, preferredIndex: Int? = nil) {
         let previousSelectedID = selectedWindowID
         let previousIndex = selectedIndex
@@ -191,40 +162,7 @@ final class SwitcherViewModel: ObservableObject {
             source = allWindows
         }
 
-        if query.isEmpty {
-            results = source.map {
-                SearchResult(item: $0, score: 0, matchedTitleIndices: [], matchedAppIndices: [])
-            }
-        } else {
-            results = source.compactMap { item in
-                let appMatch = FuzzyMatcher.match(query: query, candidate: item.appName)
-                let titleMatch = FuzzyMatcher.match(query: query, candidate: item.title)
-                let contextMatch = item.context.flatMap { FuzzyMatcher.match(query: query, candidate: $0) }
-                let combinedMatch = FuzzyMatcher.match(
-                    query: query,
-                    candidate: "\(item.appName) \(item.title) \(item.context ?? "")"
-                )
-                guard appMatch != nil || titleMatch != nil || contextMatch != nil || combinedMatch != nil else { return nil }
-
-                let baseScore = max(
-                    appMatch?.score ?? -.infinity,
-                    titleMatch?.score ?? -.infinity,
-                    contextMatch?.score ?? -.infinity,
-                    combinedMatch?.score ?? -.infinity
-                )
-                return SearchResult(
-                    item: item,
-                    score: baseScore + learnedSearch.boost(for: query, identity: item.searchIdentity),
-                    matchedTitleIndices: titleMatch?.indices ?? [],
-                    matchedAppIndices: appMatch?.indices ?? []
-                )
-            }
-            .sorted {
-                if $0.score != $1.score { return $0.score > $1.score }
-                if $0.item.lastActive != $1.item.lastActive { return $0.item.lastActive > $1.item.lastActive }
-                return $0.item.appName.localizedStandardCompare($1.item.appName) == .orderedAscending
-            }
-        }
+        results = source.map { WindowResult(item: $0) }
 
         if preserveSelection,
            let previousSelectedID,

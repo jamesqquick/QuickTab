@@ -103,15 +103,7 @@ struct SettingsView: View {
             SettingGroup(title: "Switchers") {
                 settingToggle("Replace Command-Tab", isOn: $settings.replaceCommandTab, detail: "Release Command to switch")
                 settingToggle("Enable Option-Tab", isOn: $settings.enableOptionTab, detail: "A second recent-window switcher")
-            }
-            SettingGroup(title: "Search") {
-                shortcutRow("Window Search", keys: ["⌃", "space"])
                 shortcutRow("Current App", keys: ["⌘", "`"])
-                settingToggle("Enable Fast Search", isOn: $settings.enableFastSearch, detail: "Hold, type, release")
-                Picker("Fast Search key", selection: $settings.fastSearchModifier) {
-                    ForEach(FastSearchModifier.allCases) { Text($0.label).tag($0) }
-                }
-                .disabled(!settings.enableFastSearch)
             }
         case .panel:
             SettingGroup(title: "Presentation") {
@@ -120,7 +112,7 @@ struct SettingsView: View {
             }
         case .privacy:
             SettingGroup(title: "Private by design") {
-                privacyRow(icon: "lock.shield", title: "On-device only", detail: "Window titles and search queries never leave your Mac.")
+                privacyRow(icon: "lock.shield", title: "On-device only", detail: "Window data never leaves your Mac.")
                 privacyRow(icon: "chart.bar.xaxis", title: "No analytics", detail: "QuickTab contains no tracking or telemetry SDKs.")
                 privacyRow(icon: "network.slash", title: "No network access", detail: "Core switching works without an internet connection.")
             }

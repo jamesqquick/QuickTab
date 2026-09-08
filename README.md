@@ -6,7 +6,7 @@
 
 [Latest release](https://github.com/jamesqquick/QuickTab/releases/latest) | [All releases](https://github.com/jamesqquick/QuickTab/releases)
 
-QuickTab is a native macOS window switcher built for fast, deterministic keyboard navigation. It replaces app-level switching with individual windows, adds fuzzy search and learned shortcuts, and keeps window controls close to the keyboard.
+QuickTab is a native macOS window switcher built for fast, deterministic keyboard navigation. It replaces app-level switching with individual windows and keeps window controls close to the keyboard.
 
 ## Install
 
@@ -22,9 +22,7 @@ After installing a Sparkle-enabled release, QuickTab checks for updates daily an
 ## Features
 
 - Switch between individual windows with Command-Tab, ordered by recent use.
-- Search window and app names with non-consecutive fuzzy matching.
-- Learn short queries for results you choose frequently.
-- Hold Right Option, Left Option, or Fn to search, then release to switch.
+- Reverse direction with Shift-Command-Tab.
 - Cycle through the active application's windows with Command-Backtick.
 - Close, minimize, hide, or quit directly from the switcher.
 - Control how minimized windows and hidden applications are ordered or omitted.
@@ -36,10 +34,9 @@ After installing a Sparkle-enabled release, QuickTab checks for updates daily an
 
 | Control | Action |
 | --- | --- |
-| `Control-Space` | Search windows |
 | `Command-Tab` | Cycle through recent windows |
+| `Shift-Command-Tab` | Cycle backward through recent windows |
 | `Command-Backtick` | Cycle through the active application's windows |
-| Hold the configured modifier and type | Fast Search; release to switch |
 | Arrow keys | Move selection |
 | Return | Switch to the selected window |
 | Escape | Cancel |
@@ -47,8 +44,6 @@ After installing a Sparkle-enabled release, QuickTab checks for updates daily an
 | `Command-M` | Minimize the selected window |
 | `Command-H` | Hide the selected application |
 | `Command-Q` | Quit the selected application |
-
-Command-Tab is reserved for cycling and window actions. Use `Control-Space` to enter search so every letter can be typed without conflicting with `Command-W`, `Command-M`, `Command-H`, or `Command-Q`.
 
 Shortcuts and display behavior can be changed from the QuickTab menu bar icon.
 
