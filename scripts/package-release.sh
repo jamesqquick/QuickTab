@@ -44,6 +44,7 @@ hdiutil create \
   "$DMG"
 
 rm -rf "$STAGING"
+hdiutil verify "$DMG"
 codesign --force --timestamp --sign "$SIGN_IDENTITY" "$DMG"
 
 if [[ -n "${QUICKTAB_NOTARY_PROFILE:-}" ]]; then
@@ -55,7 +56,6 @@ fi
 codesign --verify --deep --strict --verbose=2 "$APP"
 spctl --assess --type execute --verbose=2 "$APP"
 codesign --verify --verbose=2 "$DMG"
-hdiutil verify "$DMG"
 
 VERSION="$(plutil -extract CFBundleShortVersionString raw -o - "$APP/Contents/Info.plist")"
 BUILD="$(plutil -extract CFBundleVersion raw -o - "$APP/Contents/Info.plist")"
