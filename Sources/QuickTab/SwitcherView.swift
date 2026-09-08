@@ -68,7 +68,7 @@ struct SwitcherView: View {
                 Text("No window found")
                     .font(.system(size: 18, weight: .semibold, design: .rounded))
                     .foregroundStyle(QuickTabTheme.paper)
-                Text("Try fewer characters or a different app name.")
+                Text("Type an app or window name.")
                     .font(.system(size: 13))
                     .foregroundStyle(QuickTabTheme.paperMuted)
             }
@@ -117,6 +117,8 @@ struct SwitcherView: View {
 
     private var footer: some View {
         HStack(spacing: 8) {
+            Keycap(label: "⌃Space")
+            Text("search")
             Keycap(label: "↑↓")
             Text("navigate")
             Keycap(label: "↩")

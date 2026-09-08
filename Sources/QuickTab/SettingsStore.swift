@@ -8,7 +8,6 @@ final class SettingsStore: ObservableObject {
         static let enableOptionTab = "enableOptionTab"
         static let enableFastSearch = "enableFastSearch"
         static let fastSearchModifier = "fastSearchModifier"
-        static let directTyping = "directTyping"
         static let showOnAllDisplays = "showOnAllDisplays"
         static let hoverSelects = "hoverSelects"
         static let minimizedVisibility = "minimizedVisibility"
@@ -22,7 +21,6 @@ final class SettingsStore: ObservableObject {
     @Published var enableOptionTab: Bool { didSet { save() } }
     @Published var enableFastSearch: Bool { didSet { save() } }
     @Published var fastSearchModifier: FastSearchModifier { didSet { save() } }
-    @Published var directTyping: Bool { didSet { save() } }
     @Published var showOnAllDisplays: Bool { didSet { save() } }
     @Published var hoverSelects: Bool { didSet { save() } }
     @Published var minimizedVisibility: ItemVisibility { didSet { save() } }
@@ -37,7 +35,6 @@ final class SettingsStore: ObservableObject {
             Key.enableOptionTab: false,
             Key.enableFastSearch: true,
             Key.fastSearchModifier: FastSearchModifier.rightOption.rawValue,
-            Key.directTyping: true,
             Key.showOnAllDisplays: true,
             Key.hoverSelects: true,
             Key.minimizedVisibility: ItemVisibility.bottom.rawValue,
@@ -48,7 +45,6 @@ final class SettingsStore: ObservableObject {
         enableOptionTab = defaults.bool(forKey: Key.enableOptionTab)
         enableFastSearch = defaults.bool(forKey: Key.enableFastSearch)
         fastSearchModifier = FastSearchModifier(rawValue: defaults.string(forKey: Key.fastSearchModifier) ?? "rightOption") ?? .rightOption
-        directTyping = defaults.bool(forKey: Key.directTyping)
         showOnAllDisplays = defaults.bool(forKey: Key.showOnAllDisplays)
         hoverSelects = defaults.bool(forKey: Key.hoverSelects)
         minimizedVisibility = ItemVisibility(rawValue: defaults.string(forKey: Key.minimizedVisibility) ?? "bottom") ?? .bottom
@@ -69,7 +65,6 @@ final class SettingsStore: ObservableObject {
         defaults.set(enableOptionTab, forKey: Key.enableOptionTab)
         defaults.set(enableFastSearch, forKey: Key.enableFastSearch)
         defaults.set(fastSearchModifier.rawValue, forKey: Key.fastSearchModifier)
-        defaults.set(directTyping, forKey: Key.directTyping)
         defaults.set(showOnAllDisplays, forKey: Key.showOnAllDisplays)
         defaults.set(hoverSelects, forKey: Key.hoverSelects)
         defaults.set(minimizedVisibility.rawValue, forKey: Key.minimizedVisibility)

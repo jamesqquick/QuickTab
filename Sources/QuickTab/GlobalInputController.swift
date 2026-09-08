@@ -6,7 +6,6 @@ struct GlobalInputConfiguration {
     var enableOptionTab = false
     var enableFastSearch = true
     var fastSearchModifier = FastSearchModifier.rightOption
-    var directTyping = true
 }
 
 @MainActor
@@ -15,7 +14,6 @@ protocol GlobalInputHandler: AnyObject {
     func presentSwitcher(mode: SwitcherMode, advanceImmediately: Bool)
     func moveSwitcherSelection(by offset: Int)
     func appendSwitcherQuery(_ text: String)
-    func beginSwitcherSearch()
     func deleteSwitcherQueryCharacter()
     func commitSwitcherSelection()
     func dismissSwitcher()
@@ -216,18 +214,11 @@ final class GlobalInputController {
 
         guard isSwitcherVisible else { return false }
 
-        if keyCode == KeyCode.s,
-           cyclingModifier != nil,
-           normalizedFlags == .maskCommand || normalizedFlags == .maskAlternate {
-            enqueueHandlerWork { $0.beginSwitcherSearch() }
-            return true
-        }
-
         switch keyCode {
-        case KeyCode.up, KeyCode.k:
+        case KeyCode.up:
             enqueueHandlerWork { $0.moveSwitcherSelection(by: -1) }
             return true
-        case KeyCode.down, KeyCode.j:
+        case KeyCode.down:
             enqueueHandlerWork { $0.moveSwitcherSelection(by: 1) }
             return true
         case KeyCode.returnKey:
@@ -262,8 +253,7 @@ final class GlobalInputController {
             enqueueHandlerWork { $0.performSwitcherAction(.quitApplication) }
             return true
         default:
-            if configuration.directTyping,
-               (!flags.contains(.maskCommand) && !flags.contains(.maskAlternate) || cyclingModifier != nil),
+            if cyclingModifier == nil,
                let text = event.text,
                !text.isEmpty {
                 enqueueHandlerWork { $0.appendSwitcherQuery(text) }
@@ -326,12 +316,9 @@ private enum KeyCode {
     static let grave: UInt16 = 50
     static let delete: UInt16 = 51
     static let escape: UInt16 = 53
-    static let s: UInt16 = 1
     static let h: UInt16 = 4
     static let q: UInt16 = 12
     static let w: UInt16 = 13
-    static let j: UInt16 = 38
-    static let k: UInt16 = 40
     static let m: UInt16 = 46
     static let down: UInt16 = 125
     static let up: UInt16 = 126

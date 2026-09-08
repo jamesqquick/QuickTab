@@ -93,11 +93,6 @@ final class SwitcherViewModel: ObservableObject {
         query.append(contentsOf: value)
     }
 
-    func beginSearch() {
-        mode = .search
-        query = ""
-    }
-
     func deleteBackward() {
         guard !query.isEmpty else { return }
         query.removeLast()

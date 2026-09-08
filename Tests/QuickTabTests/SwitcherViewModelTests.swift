@@ -120,7 +120,7 @@ final class SwitcherViewModelTests: XCTestCase {
             .sink { requests.append($0) }
 
         viewModel.appendToQuery("second")
-        viewModel.beginSearch()
+        viewModel.query = ""
 
         XCTAssertEqual(viewModel.selectedWindowID, first.id)
         XCTAssertEqual(requests, [
@@ -438,7 +438,6 @@ private final class ViewModelInputHandler: GlobalInputHandler {
 
     func moveSwitcherSelection(by offset: Int) { viewModel.moveSelection(by: offset) }
     func appendSwitcherQuery(_ text: String) { viewModel.appendToQuery(text) }
-    func beginSwitcherSearch() { viewModel.beginSearch() }
     func deleteSwitcherQueryCharacter() { viewModel.deleteBackward() }
     func commitSwitcherSelection() {
         commitCount += 1

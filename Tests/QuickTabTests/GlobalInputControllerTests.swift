@@ -21,6 +21,49 @@ final class GlobalInputControllerTests: XCTestCase {
         XCTAssertEqual(handler.events, ["present", "query:a"])
     }
 
+    func testCommandTabLettersPassThroughWithoutChangingSwitcherState() async throws {
+        let controller = GlobalInputController()
+        let handler = InputHandlerSpy()
+        controller.handler = handler
+
+        XCTAssertTrue(controller.handle(
+            type: .keyDown,
+            event: try makeKeyEvent(keyCode: 48, flags: .maskCommand)
+        ))
+
+        for (keyCode, text) in [(CGKeyCode(1), "s"), (CGKeyCode(38), "j"), (CGKeyCode(40), "k")] {
+            XCTAssertFalse(controller.handle(
+                type: .keyDown,
+                event: try makeKeyEvent(keyCode: keyCode, flags: .maskCommand, text: text)
+            ))
+        }
+
+        await drainMainQueue()
+        XCTAssertTrue(handler.queries.isEmpty)
+        XCTAssertTrue(handler.selectionOffsets.isEmpty)
+    }
+
+    func testExplicitSearchCapturesActionLettersWithoutModifiers() async throws {
+        let controller = GlobalInputController()
+        let handler = InputHandlerSpy()
+        controller.handler = handler
+
+        XCTAssertTrue(controller.handle(
+            type: .keyDown,
+            event: try makeKeyEvent(keyCode: 49, flags: .maskControl)
+        ))
+
+        for (keyCode, text) in [(CGKeyCode(13), "w"), (CGKeyCode(46), "m"), (CGKeyCode(4), "h"), (CGKeyCode(12), "q")] {
+            XCTAssertTrue(controller.handle(
+                type: .keyDown,
+                event: try makeKeyEvent(keyCode: keyCode, text: text)
+            ))
+        }
+
+        await drainMainQueue()
+        XCTAssertEqual(handler.queries, ["w", "m", "h", "q"])
+    }
+
     func testCycleChordOnVisibleSearchCommitsOnModifierRelease() async throws {
         try await assertVisibleCycleChordCommitsOnRelease(keyCode: 48, flags: .maskCommand)
     }
@@ -124,7 +167,7 @@ final class GlobalInputControllerTests: XCTestCase {
         await drainMainQueue()
         XCTAssertTrue(handler.isSwitcherVisible)
 
-        controller.configuration = GlobalInputConfiguration(directTyping: false)
+        controller.configuration = GlobalInputConfiguration(enableOptionTab: true)
         XCTAssertFalse(controller.handle(type: .flagsChanged, event: try makeKeyEvent(keyCode: 55)))
         XCTAssertEqual(handler.inputSessionResetCount, 0)
         XCTAssertTrue(handler.isSwitcherVisible)
@@ -486,7 +529,6 @@ private final class InputHandlerSpy: GlobalInputHandler {
         queries.append(text)
         events.append("query:\(text)")
     }
-    func beginSwitcherSearch() {}
     func deleteSwitcherQueryCharacter() {}
     func dismissSwitcher() {
         dismissCount += 1

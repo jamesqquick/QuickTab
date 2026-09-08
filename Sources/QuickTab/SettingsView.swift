@@ -103,7 +103,6 @@ struct SettingsView: View {
             SettingGroup(title: "Switchers") {
                 settingToggle("Replace Command-Tab", isOn: $settings.replaceCommandTab, detail: "Release Command to switch")
                 settingToggle("Enable Option-Tab", isOn: $settings.enableOptionTab, detail: "A second recent-window switcher")
-                settingToggle("Type to search while switching", isOn: $settings.directTyping)
             }
             SettingGroup(title: "Search") {
                 shortcutRow("Window Search", keys: ["⌃", "space"])

@@ -86,10 +86,6 @@ final class AppCoordinator: NSObject, GlobalInputHandler {
         viewModel.appendToQuery(text)
     }
 
-    func beginSwitcherSearch() {
-        viewModel.beginSearch()
-    }
-
     func deleteSwitcherQueryCharacter() {
         viewModel.deleteBackward()
     }
@@ -147,8 +143,7 @@ final class AppCoordinator: NSObject, GlobalInputHandler {
             replaceCommandTab: settings.replaceCommandTab,
             enableOptionTab: settings.enableOptionTab,
             enableFastSearch: settings.enableFastSearch,
-            fastSearchModifier: settings.fastSearchModifier,
-            directTyping: settings.directTyping
+            fastSearchModifier: settings.fastSearchModifier
         )
     }
 

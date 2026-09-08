@@ -40,13 +40,15 @@ After installing a Sparkle-enabled release, QuickTab checks for updates daily an
 | `Command-Tab` | Cycle through recent windows |
 | `Command-Backtick` | Cycle through the active application's windows |
 | Hold the configured modifier and type | Fast Search; release to switch |
-| Arrow keys, `J`, or `K` | Move selection |
+| Arrow keys | Move selection |
 | Return | Switch to the selected window |
 | Escape | Cancel |
 | `Command-W` | Close the selected window |
 | `Command-M` | Minimize the selected window |
 | `Command-H` | Hide the selected application |
 | `Command-Q` | Quit the selected application |
+
+Command-Tab is reserved for cycling and window actions. Use `Control-Space` to enter search so every letter can be typed without conflicting with `Command-W`, `Command-M`, `Command-H`, or `Command-Q`.
 
 Shortcuts and display behavior can be changed from the QuickTab menu bar icon.
 
