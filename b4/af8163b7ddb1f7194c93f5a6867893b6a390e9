@@ -1,0 +1,19 @@
+Sources/QuickTab/SwitcherView.swift
+  s_37855b5ec51fc5::t_24226e74abbcc9 7,26-29,53,103-109
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "b4af8163b7ddb1f7194c93f5a6867893b6a390e9",
+  "prompts": {},
+  "sessions": {
+    "s_37855b5ec51fc5": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_f7da4da6affeNJJWDzsCbOVZV6",
+        "model": "gpt-5.6-luna"
+      },
+      "human_author": "James Quick <jquick@cloudflare.com>"
+    }
+  }
+}
