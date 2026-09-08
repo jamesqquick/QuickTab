@@ -1,0 +1,19 @@
+docs/superpowers/plans/2026-09-08-search-shortcuts-plan.md
+  s_dbf51884d0a4b8::t_18e8a038a18111 1-147
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "cfa491f4f4f304643dc31be1a0f4e06a47e8c3ce",
+  "prompts": {},
+  "sessions": {
+    "s_dbf51884d0a4b8": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_f7e0e24d3ffe25XlNun3205FG6",
+        "model": "gpt-5.6-luna"
+      },
+      "human_author": "James Quick <jquick@cloudflare.com>"
+    }
+  }
+}
