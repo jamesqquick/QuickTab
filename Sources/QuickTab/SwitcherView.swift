@@ -4,7 +4,6 @@ import SwiftUI
 struct SwitcherView: View {
     @ObservedObject var viewModel: SwitcherViewModel
     @ObservedObject var settings: SettingsStore
-    @State private var cursorVisible = true
 
     var body: some View {
         VStack(spacing: 0) {
@@ -23,10 +22,6 @@ struct SwitcherView: View {
         .shadow(color: Color.black.opacity(0.35), radius: 34, y: 18)
         .padding(18)
         .environment(\.colorScheme, .dark)
-        .onAppear(perform: startCursorBlink)
-        .onChange(of: viewModel.mode) { _, _ in
-            startCursorBlink()
-        }
     }
 
     private var header: some View {
@@ -47,11 +42,7 @@ struct SwitcherView: View {
                     .foregroundStyle(QuickTabTheme.electric)
                 HStack(spacing: 6) {
                     if showsQueryCursor && viewModel.query.isEmpty {
-                        Rectangle()
-                            .fill(QuickTabTheme.electric)
-                            .frame(width: 2, height: 23)
-                            .opacity(cursorVisible ? 1 : 0)
-                            .opacity(cursorVisible ? 1 : 0)
+                        BlinkingCursor()
                     }
                     Text(queryLabel)
                         .font(.system(
@@ -66,10 +57,7 @@ struct SwitcherView: View {
                         )
                         .lineLimit(1)
                     if showsQueryCursor && !viewModel.query.isEmpty {
-                        Rectangle()
-                            .fill(QuickTabTheme.electric)
-                            .frame(width: 2, height: 23)
-                            .opacity(cursorVisible ? 1 : 0)
+                        BlinkingCursor()
                     }
                 }
             }
@@ -104,13 +92,6 @@ struct SwitcherView: View {
             true
         case .recent, .application:
             false
-        }
-    }
-
-    private func startCursorBlink() {
-        cursorVisible = true
-        withAnimation(.easeInOut(duration: 0.65).repeatForever(autoreverses: true)) {
-            cursorVisible = false
         }
     }
 
@@ -190,6 +171,24 @@ struct SwitcherView: View {
         .foregroundStyle(QuickTabTheme.paperMuted)
         .padding(.horizontal, 20)
         .padding(.vertical, 13)
+    }
+}
+
+private struct BlinkingCursor: View {
+    @State private var isVisible = true
+
+    var body: some View {
+        Rectangle()
+            .fill(QuickTabTheme.electric)
+            .frame(width: 2, height: 23)
+            .opacity(isVisible ? 1 : 0)
+            .onAppear {
+                DispatchQueue.main.async {
+                    withAnimation(.easeInOut(duration: 0.65).repeatForever(autoreverses: true)) {
+                        isVisible = false
+                    }
+                }
+            }
     }
 }
 
