@@ -492,7 +492,6 @@ private final class InputHandlerSpy: GlobalInputHandler {
         dismissCount += 1
         isSwitcherVisible = false
     }
-    func pointerMoved(to point: CGPoint) {}
     func pointerPressed(at point: CGPoint) { pointerPressPoints.append(point) }
     func inputSessionDidReset() {
         inputSessionResetCount += 1

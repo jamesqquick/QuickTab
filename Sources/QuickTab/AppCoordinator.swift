@@ -11,7 +11,6 @@ final class AppCoordinator: NSObject, GlobalInputHandler {
     private let learnedSearch = LearnedSearchStore()
     private lazy var viewModel = SwitcherViewModel(repository: repository, learnedSearch: learnedSearch)
     private lazy var switcherPanel = SwitcherPanelController(viewModel: viewModel, settings: settings)
-    private lazy var sidebar = SidebarController(repository: repository, settings: settings)
     private let input = GlobalInputController()
 
     private var statusItem: NSStatusItem?
@@ -42,7 +41,6 @@ final class AppCoordinator: NSObject, GlobalInputHandler {
         }
         configureMenuBar()
         observeSettings()
-        sidebar.rebuild()
 
         repository.$hasAccessibilityPermission
             .removeDuplicates()
@@ -113,10 +111,6 @@ final class AppCoordinator: NSObject, GlobalInputHandler {
         viewModel.perform(action, keepVisible: action == .close || action == .quitApplication)
     }
 
-    func pointerMoved(to point: CGPoint) {
-        sidebar.handlePointer(at: point)
-    }
-
     func pointerPressed(at point: CGPoint) {
         guard viewModel.isVisible, switcherPanel.shouldDismissPointerPress(at: point) else { return }
         dismissSwitcher()
@@ -146,15 +140,6 @@ final class AppCoordinator: NSObject, GlobalInputHandler {
             }
             .store(in: &cancellables)
 
-        Publishers.CombineLatest(settings.$sidebarEnabled, settings.$sidebarEdge)
-            .dropFirst()
-            .debounce(for: .milliseconds(80), scheduler: RunLoop.main)
-            .sink { [weak self] _ in self?.sidebar.rebuild() }
-            .store(in: &cancellables)
-
-        NotificationCenter.default.publisher(for: NSApplication.didChangeScreenParametersNotification)
-            .sink { [weak self] _ in self?.sidebar.rebuild() }
-            .store(in: &cancellables)
     }
 
     private func updateInputConfiguration() {
@@ -209,7 +194,6 @@ final class AppCoordinator: NSObject, GlobalInputHandler {
         menu.addItem(status)
         menu.addItem(.separator())
         menu.addItem(withTitle: "Search Windows", action: #selector(showSearch), keyEquivalent: " ").target = self
-        menu.addItem(withTitle: "Toggle Sidebar", action: #selector(toggleSidebar), keyEquivalent: "").target = self
         menu.addItem(withTitle: "Refresh Windows", action: #selector(refreshWindows), keyEquivalent: "r").target = self
         menu.addItem(.separator())
         menu.addItem(withTitle: "Settings…", action: #selector(showSettings), keyEquivalent: ",").target = self
@@ -233,10 +217,6 @@ final class AppCoordinator: NSObject, GlobalInputHandler {
         presentSwitcher(mode: .search, advanceImmediately: false)
     }
 
-    @objc private func toggleSidebar() {
-        sidebar.toggle()
-    }
-
     @objc private func refreshWindows() {
         repository.refresh(preferences: visibilityPreferences)
     }
@@ -252,10 +232,7 @@ final class AppCoordinator: NSObject, GlobalInputHandler {
             window.title = "QuickTab Settings"
             window.titlebarAppearsTransparent = true
             window.isReleasedWhenClosed = false
-            window.contentView = NSHostingView(rootView: SettingsView(
-                settings: settings,
-                onSidebarChange: { [weak self] in self?.sidebar.rebuild() }
-            ))
+            window.contentView = NSHostingView(rootView: SettingsView(settings: settings))
             window.center()
             settingsWindow = window
         }

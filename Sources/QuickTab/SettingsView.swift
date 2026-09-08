@@ -3,7 +3,6 @@ import SwiftUI
 
 struct SettingsView: View {
     @ObservedObject var settings: SettingsStore
-    let onSidebarChange: () -> Void
     @State private var selectedSection = SettingsSection.general
     @State private var launchError: String?
 
@@ -120,23 +119,6 @@ struct SettingsView: View {
                 settingToggle("Show switcher on every display", isOn: $settings.showOnAllDisplays)
                 settingToggle("Select rows on pointer hover", isOn: $settings.hoverSelects)
             }
-        case .sidebar:
-            SettingGroup(title: "Edge sidebar") {
-                settingToggle("Enable Sidebar", isOn: Binding(
-                    get: { settings.sidebarEnabled },
-                    set: { settings.sidebarEnabled = $0; onSidebarChange() }
-                ))
-                Picker("Screen edge", selection: Binding(
-                    get: { settings.sidebarEdge },
-                    set: { settings.sidebarEdge = $0; onSidebarChange() }
-                )) {
-                    ForEach(SidebarEdge.allCases) { Text($0.label).tag($0) }
-                }
-                .pickerStyle(.segmented)
-            }
-            Text("Move the pointer to the chosen display edge to reveal its window list.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
         case .privacy:
             SettingGroup(title: "Private by design") {
                 privacyRow(icon: "lock.shield", title: "On-device only", detail: "Window titles and search queries never leave your Mac.")
@@ -219,7 +201,7 @@ struct SettingsView: View {
 }
 
 private enum SettingsSection: String, CaseIterable, Identifiable {
-    case general, shortcuts, panel, sidebar, privacy
+    case general, shortcuts, panel, privacy
 
     var id: String { rawValue }
     var title: String { rawValue.capitalized }
@@ -228,7 +210,6 @@ private enum SettingsSection: String, CaseIterable, Identifiable {
         case .general: "switch.2"
         case .shortcuts: "keyboard"
         case .panel: "rectangle.center.inset.filled"
-        case .sidebar: "sidebar.right"
         case .privacy: "hand.raised"
         }
     }
@@ -237,7 +218,6 @@ private enum SettingsSection: String, CaseIterable, Identifiable {
         case .general: "Choose which windows appear and how QuickTab starts."
         case .shortcuts: "Move between windows without breaking your flow."
         case .panel: "Tune the centered switcher for your workspace."
-        case .sidebar: "Keep every window one edge away."
         case .privacy: "Understand what QuickTab can see and where it stays."
         }
     }

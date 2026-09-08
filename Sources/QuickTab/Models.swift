@@ -135,14 +135,6 @@ enum ItemVisibility: String, CaseIterable, Codable, Identifiable {
     var label: String { rawValue.capitalized }
 }
 
-enum SidebarEdge: String, CaseIterable, Codable, Identifiable {
-    case left
-    case right
-
-    var id: String { rawValue }
-    var label: String { rawValue.capitalized }
-}
-
 enum FastSearchModifier: String, CaseIterable, Codable, Identifiable {
     case rightOption
     case leftOption
