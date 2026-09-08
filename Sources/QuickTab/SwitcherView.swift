@@ -46,10 +46,11 @@ struct SwitcherView: View {
                     .tracking(1.7)
                     .foregroundStyle(QuickTabTheme.electric)
                 HStack(spacing: 6) {
-                    if showsQueryCursor {
+                    if showsQueryCursor && viewModel.query.isEmpty {
                         Rectangle()
                             .fill(QuickTabTheme.electric)
                             .frame(width: 2, height: 23)
+                            .opacity(cursorVisible ? 1 : 0)
                             .opacity(cursorVisible ? 1 : 0)
                     }
                     Text(queryLabel)
@@ -64,6 +65,12 @@ struct SwitcherView: View {
                                 : QuickTabTheme.paper
                         )
                         .lineLimit(1)
+                    if showsQueryCursor && !viewModel.query.isEmpty {
+                        Rectangle()
+                            .fill(QuickTabTheme.electric)
+                            .frame(width: 2, height: 23)
+                            .opacity(cursorVisible ? 1 : 0)
+                    }
                 }
             }
 
