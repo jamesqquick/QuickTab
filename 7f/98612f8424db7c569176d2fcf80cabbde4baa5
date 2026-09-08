@@ -1,0 +1,19 @@
+Sources/QuickTab/SettingsView.swift
+  s_750e6c9659f0ff::t_cad8808eaaf142 115
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "7f98612f8424db7c569176d2fcf80cabbde4baa5",
+  "prompts": {},
+  "sessions": {
+    "s_750e6c9659f0ff": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_f7d6a4a88ffetmb66YXQu9Z6eg",
+        "model": "gpt-5.6-luna"
+      },
+      "human_author": "James Quick <jquick@cloudflare.com>"
+    }
+  }
+}
