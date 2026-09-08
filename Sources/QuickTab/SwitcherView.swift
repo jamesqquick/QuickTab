@@ -40,10 +40,25 @@ struct SwitcherView: View {
                     .font(.system(size: 10, weight: .bold, design: .rounded))
                     .tracking(1.7)
                     .foregroundStyle(QuickTabTheme.electric)
-                Text(viewModel.query.isEmpty ? "Where do you want to go?" : viewModel.query)
-                    .font(.system(size: 22, weight: .semibold, design: .rounded))
-                    .foregroundStyle(QuickTabTheme.paper)
-                    .lineLimit(1)
+                HStack(spacing: 6) {
+                    if showsQueryCursor {
+                        Rectangle()
+                            .fill(QuickTabTheme.electric)
+                            .frame(width: 2, height: 23)
+                    }
+                    Text(queryLabel)
+                        .font(.system(
+                            size: 22,
+                            weight: viewModel.query.isEmpty ? .regular : .semibold,
+                            design: .rounded
+                        ))
+                        .foregroundStyle(
+                            viewModel.query.isEmpty
+                                ? QuickTabTheme.paperMuted.opacity(0.78)
+                                : QuickTabTheme.paper
+                        )
+                        .lineLimit(1)
+                }
             }
 
             Spacer()
@@ -56,6 +71,27 @@ struct SwitcherView: View {
         }
         .padding(.horizontal, 22)
         .padding(.vertical, 19)
+    }
+
+    private var queryLabel: String {
+        guard viewModel.query.isEmpty else { return viewModel.query }
+        switch viewModel.mode {
+        case .search:
+            return "Where do you want to go?"
+        case .fastSearch:
+            return "Type to search..."
+        case .recent, .application:
+            return "Select a window"
+        }
+    }
+
+    private var showsQueryCursor: Bool {
+        switch viewModel.mode {
+        case .search, .fastSearch:
+            true
+        case .recent, .application:
+            false
+        }
     }
 
     @ViewBuilder
