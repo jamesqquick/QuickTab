@@ -446,7 +446,6 @@ private final class ViewModelInputHandler: GlobalInputHandler {
     }
     func dismissSwitcher() { viewModel.dismiss() }
     func performSwitcherAction(_ action: WindowAction) { viewModel.perform(action) }
-    func pointerMoved(to point: CGPoint) {}
     func pointerPressed(at point: CGPoint) {}
     func inputSessionDidReset() { viewModel.dismiss() }
 }

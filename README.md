@@ -27,8 +27,6 @@ After installing a Sparkle-enabled release, QuickTab checks for updates daily an
 - Hold Right Option, Left Option, or Fn to search, then release to switch.
 - Cycle through the active application's windows with Command-Backtick.
 - Close, minimize, hide, or quit directly from the switcher.
-- Reveal an auto-hiding window sidebar from either screen edge.
-- Show the switcher and sidebar independently on connected displays.
 - Control how minimized windows and hidden applications are ordered or omitted.
 - Exclude applications from the switcher.
 - Launch automatically at login.

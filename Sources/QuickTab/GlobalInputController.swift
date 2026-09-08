@@ -20,7 +20,6 @@ protocol GlobalInputHandler: AnyObject {
     func commitSwitcherSelection()
     func dismissSwitcher()
     func performSwitcherAction(_ action: WindowAction)
-    func pointerMoved(to point: CGPoint)
     func pointerPressed(at point: CGPoint)
     func inputSessionDidReset()
 }
@@ -37,8 +36,6 @@ final class GlobalInputController {
     private var cyclingModifier: CGEventFlags?
     private var fastModifierHeld = false
     private var fastSearchActive = false
-    private var pendingMousePoint: CGPoint?
-    private var mouseUpdateScheduled = false
     private var presentationPending = false
     private var presentationGeneration: UInt = 0
     private var endingActionKeyCode: UInt16?
@@ -63,7 +60,6 @@ final class GlobalInputController {
             .keyDown,
             .keyUp,
             .flagsChanged,
-            .mouseMoved,
             .leftMouseDown,
             .rightMouseDown,
             .otherMouseDown,
@@ -104,22 +100,6 @@ final class GlobalInputController {
         if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
             resetActiveSwitcherSession(notifyHandler: true)
             if let eventTap { CGEvent.tapEnable(tap: eventTap, enable: true) }
-            return false
-        }
-
-        if type == .mouseMoved {
-            let location = mouseLocation()
-            pendingMousePoint = location
-            if !mouseUpdateScheduled {
-                mouseUpdateScheduled = true
-                DispatchQueue.main.async { [weak self] in
-                    guard let self else { return }
-                    self.mouseUpdateScheduled = false
-                    guard let point = self.pendingMousePoint else { return }
-                    self.pendingMousePoint = nil
-                    self.handler?.pointerMoved(to: point)
-                }
-            }
             return false
         }
 

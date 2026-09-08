@@ -11,8 +11,6 @@ final class SettingsStore: ObservableObject {
         static let directTyping = "directTyping"
         static let showOnAllDisplays = "showOnAllDisplays"
         static let hoverSelects = "hoverSelects"
-        static let sidebarEnabled = "sidebarEnabled"
-        static let sidebarEdge = "sidebarEdge"
         static let minimizedVisibility = "minimizedVisibility"
         static let hiddenVisibility = "hiddenVisibility"
         static let excludedBundleIDs = "excludedBundleIDs"
@@ -27,8 +25,6 @@ final class SettingsStore: ObservableObject {
     @Published var directTyping: Bool { didSet { save() } }
     @Published var showOnAllDisplays: Bool { didSet { save() } }
     @Published var hoverSelects: Bool { didSet { save() } }
-    @Published var sidebarEnabled: Bool { didSet { save() } }
-    @Published var sidebarEdge: SidebarEdge { didSet { save() } }
     @Published var minimizedVisibility: ItemVisibility { didSet { save() } }
     @Published var hiddenVisibility: ItemVisibility { didSet { save() } }
     @Published var excludedBundleIDs: Set<String> { didSet { save() } }
@@ -44,8 +40,6 @@ final class SettingsStore: ObservableObject {
             Key.directTyping: true,
             Key.showOnAllDisplays: true,
             Key.hoverSelects: true,
-            Key.sidebarEnabled: true,
-            Key.sidebarEdge: SidebarEdge.right.rawValue,
             Key.minimizedVisibility: ItemVisibility.bottom.rawValue,
             Key.hiddenVisibility: ItemVisibility.bottom.rawValue,
         ])
@@ -57,8 +51,6 @@ final class SettingsStore: ObservableObject {
         directTyping = defaults.bool(forKey: Key.directTyping)
         showOnAllDisplays = defaults.bool(forKey: Key.showOnAllDisplays)
         hoverSelects = defaults.bool(forKey: Key.hoverSelects)
-        sidebarEnabled = defaults.bool(forKey: Key.sidebarEnabled)
-        sidebarEdge = SidebarEdge(rawValue: defaults.string(forKey: Key.sidebarEdge) ?? "right") ?? .right
         minimizedVisibility = ItemVisibility(rawValue: defaults.string(forKey: Key.minimizedVisibility) ?? "bottom") ?? .bottom
         hiddenVisibility = ItemVisibility(rawValue: defaults.string(forKey: Key.hiddenVisibility) ?? "bottom") ?? .bottom
         excludedBundleIDs = Set(defaults.stringArray(forKey: Key.excludedBundleIDs) ?? [])
@@ -80,8 +72,6 @@ final class SettingsStore: ObservableObject {
         defaults.set(directTyping, forKey: Key.directTyping)
         defaults.set(showOnAllDisplays, forKey: Key.showOnAllDisplays)
         defaults.set(hoverSelects, forKey: Key.hoverSelects)
-        defaults.set(sidebarEnabled, forKey: Key.sidebarEnabled)
-        defaults.set(sidebarEdge.rawValue, forKey: Key.sidebarEdge)
         defaults.set(minimizedVisibility.rawValue, forKey: Key.minimizedVisibility)
         defaults.set(hiddenVisibility.rawValue, forKey: Key.hiddenVisibility)
         defaults.set(Array(excludedBundleIDs), forKey: Key.excludedBundleIDs)
