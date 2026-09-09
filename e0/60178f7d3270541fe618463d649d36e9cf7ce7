@@ -1,0 +1,19 @@
+appcast.xml
+  s_6d40da22e640e5::t_44e94949f2c9f6 8-22
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "e060178f7d3270541fe618463d649d36e9cf7ce7",
+  "prompts": {},
+  "sessions": {
+    "s_6d40da22e640e5": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_f7e7a770fffeZM9hB90njEBGmf",
+        "model": "gpt-5.6-luna"
+      },
+      "human_author": "James Quick <jquick@cloudflare.com>"
+    }
+  }
+}
