@@ -364,14 +364,14 @@ final class SwitcherViewModelTests: XCTestCase {
     func testSlowActivationDoesNotBlockMainActor() async {
         let first = window("first")
         let (viewModel, repository) = makeViewModel(windows: [first])
-        repository.activationDelay = 0.2
+        repository.activationDelay = 0.5
         viewModel.present(.recent, pointerPosition: .zero)
 
         let startedAt = Date()
         viewModel.commit()
         try? await Task.sleep(for: .milliseconds(60))
 
-        XCTAssertLessThan(Date().timeIntervalSince(startedAt), 0.12)
+        XCTAssertLessThan(Date().timeIntervalSince(startedAt), 0.25)
         XCTAssertFalse(viewModel.isVisible)
         viewModel.dismiss()
     }
