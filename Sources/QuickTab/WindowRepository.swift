@@ -1,14 +1,49 @@
 import AppKit
 import ApplicationServices
 import Combine
+import OSLog
+
+private let windowInteractionQueue = DispatchQueue(
+    label: "com.jamesqquick.QuickTab.window-interactions",
+    qos: .userInitiated
+)
+
+private final class WindowInteractionCancellation: @unchecked Sendable {
+    private let lock = NSLock()
+    private var isCancelled = false
+
+    func cancel() {
+        lock.lock()
+        isCancelled = true
+        lock.unlock()
+    }
+
+    func canContinue() -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return !isCancelled
+    }
+}
+
+private let accessibilityMessagingTimeoutConfigured: Void = {
+    let systemWideElement = AXUIElementCreateSystemWide()
+    AXUIElementSetMessagingTimeout(systemWideElement, 0.5)
+}()
+
+private extension Logger {
+    static let windowInteraction = Logger(
+        subsystem: Bundle.main.bundleIdentifier ?? "com.jamesqquick.QuickTab",
+        category: "WindowInteraction"
+    )
+}
 
 @MainActor
 protocol WindowRepositoryProtocol: AnyObject {
     var windowsPublisher: AnyPublisher<[WindowItem], Never> { get }
     var activeWindowID: WindowID? { get }
 
-    func activate(_ item: WindowItem)
-    func perform(_ action: WindowAction, on item: WindowItem) -> Bool
+    func activate(_ item: WindowItem) async
+    func perform(_ action: WindowAction, on item: WindowItem) async -> Bool
 }
 
 @MainActor
@@ -20,6 +55,7 @@ final class WindowRepository: ObservableObject, WindowRepositoryProtocol {
     private var lastActive: [WindowID: Date] = [:]
     private var refreshTimer: Timer?
     private var workspaceObserver: NSObjectProtocol?
+    private var activeWindowLookupTask: Task<Void, Never>?
     private var refreshGeneration = 0
     private var isRefreshing = false
     private var refreshPending = false
@@ -35,6 +71,10 @@ final class WindowRepository: ObservableObject, WindowRepositoryProtocol {
         hidden: .bottom,
         excludedBundleIDs: []
     )
+
+    init() {
+        _ = accessibilityMessagingTimeoutConfigured
+    }
 
     var windowsPublisher: AnyPublisher<[WindowItem], Never> {
         $windows.eraseToAnyPublisher()
@@ -54,13 +94,19 @@ final class WindowRepository: ObservableObject, WindowRepositoryProtocol {
             object: nil,
             queue: .main
         ) { [weak self] notification in
-            Task { @MainActor in
-                guard
-                    let self,
-                    let app = notification.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication
+            MainActor.assumeIsolated {
+                guard let self,
+                      let app = notification.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication
                 else { return }
-                self.markActiveWindow(processID: app.processIdentifier)
-                self.refresh(preferences: preferences())
+                self.activeWindowLookupTask?.cancel()
+                let processID = app.processIdentifier
+                self.activeWindowLookupTask = Task { [weak self] in
+                    let lookup = await Self.focusedWindowLookup(processID: processID)
+                    guard !Task.isCancelled, let self else { return }
+                    self.activeWindowLookupTask = nil
+                    self.markActiveWindow(processID: processID, lookup: lookup)
+                    self.refresh(preferences: preferences())
+                }
             }
         }
     }
@@ -70,6 +116,8 @@ final class WindowRepository: ObservableObject, WindowRepositoryProtocol {
         refreshTimer = nil
         scheduledRefresh?.cancel()
         scheduledRefresh = nil
+        activeWindowLookupTask?.cancel()
+        activeWindowLookupTask = nil
         if let workspaceObserver {
             NSWorkspace.shared.notificationCenter.removeObserver(workspaceObserver)
         }
@@ -142,36 +190,9 @@ final class WindowRepository: ObservableObject, WindowRepositoryProtocol {
         }
     }
 
-    func activate(_ item: WindowItem) {
-        guard let app = NSRunningApplication(processIdentifier: item.processID) else { return }
-        app.unhide()
-        guard app.activate(options: []) else { return }
-
-        var windowActivated = item.element == nil
-        if let element = item.element {
-            if item.isMinimized {
-                _ = AXUIElementSetAttributeValue(
-                    element,
-                    kAXMinimizedAttribute as CFString,
-                    kCFBooleanFalse
-                )
-            }
-            let appElement = AXUIElementCreateApplication(item.processID)
-            let raised = AXUIElementPerformAction(element, kAXRaiseAction as CFString) == .success
-            _ = AXUIElementSetAttributeValue(
-                appElement,
-                kAXMainWindowAttribute as CFString,
-                element
-            )
-            _ = AXUIElementSetAttributeValue(
-                appElement,
-                kAXFocusedWindowAttribute as CFString,
-                element
-            )
-            windowActivated = raised
-        }
-
-        guard windowActivated else { return }
+    func activate(_ item: WindowItem) async {
+        let windowActivated = await Self.activateWindow(item)
+        guard !Task.isCancelled, windowActivated else { return }
         refreshGeneration += 1
         let now = Date()
         lastActive[item.id] = now
@@ -180,29 +201,9 @@ final class WindowRepository: ObservableObject, WindowRepositoryProtocol {
     }
 
     @discardableResult
-    func perform(_ action: WindowAction, on item: WindowItem) -> Bool {
-        let reportedSuccess: Bool
-        switch action {
-        case .close:
-            guard let element = item.element, let button: AXUIElement = Self.axValue(element, kAXCloseButtonAttribute) else {
-                return false
-            }
-            reportedSuccess = AXUIElementPerformAction(button, kAXPressAction as CFString) == .success
-        case .minimize:
-            guard NSRunningApplication(processIdentifier: item.processID) != nil else { return false }
-            guard let element = item.element else { return false }
-            reportedSuccess = AXUIElementSetAttributeValue(
-                element,
-                kAXMinimizedAttribute as CFString,
-                kCFBooleanTrue
-            ) == .success
-        case .hideApplication:
-            guard let app = NSRunningApplication(processIdentifier: item.processID) else { return false }
-            reportedSuccess = app.hide()
-        case .quitApplication:
-            guard let app = NSRunningApplication(processIdentifier: item.processID) else { return false }
-            reportedSuccess = app.terminate()
-        }
+    func perform(_ action: WindowAction, on item: WindowItem) async -> Bool {
+        let execution = await Self.performWindowAction(action, on: item)
+        guard case let .completed(reportedSuccess) = execution else { return false }
         guard action.isAccepted(reportedSuccess: reportedSuccess) else { return false }
 
         switch action {
@@ -229,21 +230,160 @@ final class WindowRepository: ObservableObject, WindowRepositoryProtocol {
         return true
     }
 
-    private func markActiveWindow(processID: pid_t) {
-        let appElement = AXUIElementCreateApplication(processID)
-        AXUIElementSetMessagingTimeout(appElement, 0.05)
-        var focusedValue: CFTypeRef?
-        guard AXUIElementCopyAttributeValue(
+    nonisolated private static func activateWindow(_ item: WindowItem) async -> Bool {
+        await runWindowInteraction("activate", processID: item.processID) { cancellation in
+            activateWindowSynchronously(item, cancellation: cancellation)
+        } ?? false
+    }
+
+    nonisolated private static func activateWindowSynchronously(
+        _ item: WindowItem,
+        cancellation: WindowInteractionCancellation
+    ) -> Bool {
+        guard cancellation.canContinue() else { return false }
+        guard let app = NSRunningApplication(processIdentifier: item.processID) else { return false }
+        app.unhide()
+        guard cancellation.canContinue() else { return false }
+        guard app.activate(options: []) else { return false }
+        guard cancellation.canContinue() else { return false }
+        guard let element = item.element else { return true }
+
+        if item.isMinimized {
+            _ = AXUIElementSetAttributeValue(
+                element,
+                kAXMinimizedAttribute as CFString,
+                kCFBooleanFalse
+            )
+            guard cancellation.canContinue() else { return false }
+        }
+        let appElement = AXUIElementCreateApplication(item.processID)
+        let raised = AXUIElementPerformAction(element, kAXRaiseAction as CFString) == .success
+        guard cancellation.canContinue() else { return false }
+        _ = AXUIElementSetAttributeValue(
+            appElement,
+            kAXMainWindowAttribute as CFString,
+            element
+        )
+        guard cancellation.canContinue() else { return false }
+        _ = AXUIElementSetAttributeValue(
             appElement,
             kAXFocusedWindowAttribute as CFString,
-            &focusedValue
-        ) == .success else { return }
+            element
+        )
+        return raised
+    }
+
+    nonisolated private static func performWindowAction(
+        _ action: WindowAction,
+        on item: WindowItem
+    ) async -> WindowActionExecution {
+        await runWindowInteraction(String(describing: action), processID: item.processID) { cancellation in
+            performWindowActionSynchronously(action, on: item, cancellation: cancellation)
+        } ?? .cancelled
+    }
+
+    private enum WindowActionExecution: Sendable {
+        case cancelled
+        case completed(Bool)
+    }
+
+    nonisolated private static func performWindowActionSynchronously(
+        _ action: WindowAction,
+        on item: WindowItem,
+        cancellation: WindowInteractionCancellation
+    ) -> WindowActionExecution {
+        guard cancellation.canContinue() else { return .cancelled }
+        switch action {
+        case .close:
+            guard let element = item.element,
+                  let button: AXUIElement = axValue(element, kAXCloseButtonAttribute) else {
+                return .completed(false)
+            }
+            guard cancellation.canContinue() else { return .cancelled }
+            return .completed(AXUIElementPerformAction(button, kAXPressAction as CFString) == .success)
+        case .minimize:
+            guard NSRunningApplication(processIdentifier: item.processID) != nil,
+                  let element = item.element else { return .completed(false) }
+            guard cancellation.canContinue() else { return .cancelled }
+            return .completed(AXUIElementSetAttributeValue(
+                element,
+                kAXMinimizedAttribute as CFString,
+                kCFBooleanTrue
+            ) == .success)
+        case .hideApplication:
+            return .completed(NSRunningApplication(processIdentifier: item.processID)?.hide() == true)
+        case .quitApplication:
+            return .completed(NSRunningApplication(processIdentifier: item.processID)?.terminate() == true)
+        }
+    }
+
+    nonisolated private static func logSlowInteraction(
+        _ operation: String,
+        processID: pid_t,
+        startedAt: ContinuousClock.Instant
+    ) {
+        let duration = startedAt.duration(to: .now)
+        guard duration >= .milliseconds(100) else { return }
+        Logger.windowInteraction.warning(
+            "Slow window interaction: \(operation, privacy: .public), pid=\(processID), duration=\(String(describing: duration), privacy: .public)"
+        )
+    }
+
+    private struct FocusedWindowLookup: Sendable {
+        let succeeded: Bool
+        let fingerprint: String?
+    }
+
+    nonisolated private static func focusedWindowLookup(processID: pid_t) async -> FocusedWindowLookup {
+        await runWindowInteraction("focused-window lookup", processID: processID) { _ in
+            let appElement = AXUIElementCreateApplication(processID)
+            AXUIElementSetMessagingTimeout(appElement, 0.05)
+            var focusedValue: CFTypeRef?
+            guard AXUIElementCopyAttributeValue(
+                appElement,
+                kAXFocusedWindowAttribute as CFString,
+                &focusedValue
+            ) == .success else {
+                return FocusedWindowLookup(succeeded: false, fingerprint: nil)
+            }
+            guard let focusedValue, CFGetTypeID(focusedValue) == AXUIElementGetTypeID() else {
+                return FocusedWindowLookup(succeeded: true, fingerprint: nil)
+            }
+            let focused = unsafeBitCast(focusedValue, to: AXUIElement.self)
+            return FocusedWindowLookup(succeeded: true, fingerprint: String(CFHash(focused)))
+        } ?? FocusedWindowLookup(succeeded: false, fingerprint: nil)
+    }
+
+    nonisolated private static func runWindowInteraction<Result: Sendable>(
+        _ operation: String,
+        processID: pid_t,
+        work: @escaping @Sendable (WindowInteractionCancellation) -> Result
+    ) async -> Result? {
+        let cancellation = WindowInteractionCancellation()
+        return await withTaskCancellationHandler {
+            await withCheckedContinuation { continuation in
+                windowInteractionQueue.async {
+                    guard cancellation.canContinue() else {
+                        continuation.resume(returning: nil)
+                        return
+                    }
+                    let startedAt = ContinuousClock.now
+                    let result = work(cancellation)
+                    logSlowInteraction(operation, processID: processID, startedAt: startedAt)
+                    continuation.resume(returning: result)
+                }
+            }
+        } onCancel: {
+            cancellation.cancel()
+        }
+    }
+
+    private func markActiveWindow(processID: pid_t, lookup: FocusedWindowLookup) {
+        guard lookup.succeeded else { return }
         let now = Date()
 
-        if let focusedValue, CFGetTypeID(focusedValue) == AXUIElementGetTypeID() {
-            let focused = unsafeBitCast(focusedValue, to: AXUIElement.self)
-            let hash = String(CFHash(focused))
-            if let item = windows.first(where: { $0.processID == processID && $0.id.fingerprint == hash }) {
+        if let fingerprint = lookup.fingerprint {
+            if let item = windows.first(where: { $0.processID == processID && $0.id.fingerprint == fingerprint }) {
                 lastActive[item.id] = now
                 activeWindowID = item.id
                 promote(item.id, at: now)

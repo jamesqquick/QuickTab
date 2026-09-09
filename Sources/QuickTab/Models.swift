@@ -24,10 +24,6 @@ struct WindowItem: Identifiable, Hashable, @unchecked Sendable {
     let isHidden: Bool
     let lastActive: Date
 
-    var searchIdentity: String {
-        "\(bundleIdentifier ?? appName)|\(title)"
-    }
-
     var subtitle: String {
         guard let context else { return appName }
         return "\(appName)  ·  \(context)"
@@ -82,7 +78,7 @@ enum WindowReconciler {
     }
 }
 
-enum WindowAction: Equatable {
+enum WindowAction: Equatable, Sendable {
     case close
     case minimize
     case hideApplication
@@ -135,33 +131,13 @@ enum ItemVisibility: String, CaseIterable, Codable, Identifiable {
     var label: String { rawValue.capitalized }
 }
 
-enum FastSearchModifier: String, CaseIterable, Codable, Identifiable {
-    case rightOption
-    case leftOption
-    case function
-
-    var id: String { rawValue }
-    var label: String {
-        switch self {
-        case .rightOption: "Right Option"
-        case .leftOption: "Left Option"
-        case .function: "Function (Fn)"
-        }
-    }
-}
-
 enum SwitcherMode: Equatable {
     case recent
     case application(pid_t)
-    case search
-    case fastSearch
 }
 
-struct SearchResult: Identifiable {
+struct WindowResult: Identifiable {
     let item: WindowItem
-    let score: Double
-    let matchedTitleIndices: IndexSet
-    let matchedAppIndices: IndexSet
 
     var id: WindowID { item.id }
 }

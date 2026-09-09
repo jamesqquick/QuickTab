@@ -25,8 +25,8 @@ struct PermissionView: View {
                         .foregroundStyle(QuickTabTheme.paperMuted)
                 }
                 VStack(alignment: .leading, spacing: 13) {
-                    permissionLine(icon: "keyboard", text: "Press Control-Space to search")
-                    permissionLine(icon: "command", text: "Use Command-Tab for individual windows")
+                    permissionLine(icon: "keyboard", text: "Use Command-Tab to cycle windows")
+                    permissionLine(icon: "command", text: "Use Command-Backtick for the current app")
                     permissionLine(icon: "lock.shield", text: "Everything stays on this Mac")
                 }
                 .padding(18)

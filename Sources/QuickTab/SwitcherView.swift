@@ -40,10 +40,9 @@ struct SwitcherView: View {
                     .font(.system(size: 10, weight: .bold, design: .rounded))
                     .tracking(1.7)
                     .foregroundStyle(QuickTabTheme.electric)
-                Text(viewModel.query.isEmpty ? "Where do you want to go?" : viewModel.query)
+                Text("Select a window")
                     .font(.system(size: 22, weight: .semibold, design: .rounded))
                     .foregroundStyle(QuickTabTheme.paper)
-                    .lineLimit(1)
             }
 
             Spacer()
@@ -68,7 +67,7 @@ struct SwitcherView: View {
                 Text("No window found")
                     .font(.system(size: 18, weight: .semibold, design: .rounded))
                     .foregroundStyle(QuickTabTheme.paper)
-                Text("Try fewer characters or a different app name.")
+                Text("Type an app or window name.")
                     .font(.system(size: 13))
                     .foregroundStyle(QuickTabTheme.paperMuted)
             }
@@ -136,7 +135,7 @@ struct SwitcherView: View {
 }
 
 private struct SwitcherRow: View {
-    let result: SearchResult
+    let result: WindowResult
     let isSelected: Bool
     let onHover: (CGPoint) -> Void
     let onHoverEnded: (CGPoint) -> Void
@@ -152,14 +151,10 @@ private struct SwitcherRow: View {
                     .shadow(color: Color.black.opacity(0.22), radius: 4, y: 2)
 
                 VStack(alignment: .leading, spacing: 3) {
-                    HighlightedText(
-                        value: result.item.title,
-                        highlighted: result.matchedTitleIndices,
-                        baseColor: QuickTabTheme.paper,
-                        highlightColor: QuickTabTheme.electric
-                    )
-                    .font(.system(size: 15, weight: .semibold, design: .rounded))
-                    .lineLimit(1)
+                    Text(result.item.title)
+                        .font(.system(size: 15, weight: .semibold, design: .rounded))
+                        .foregroundStyle(QuickTabTheme.paper)
+                        .lineLimit(1)
 
                     HStack(spacing: 7) {
                         Text(result.item.subtitle)
@@ -216,20 +211,5 @@ private struct StatusPill: View {
             .padding(.horizontal, 6)
             .padding(.vertical, 2)
             .background(color.opacity(0.12), in: Capsule())
-    }
-}
-
-private struct HighlightedText: View {
-    let value: String
-    let highlighted: IndexSet
-    let baseColor: Color
-    let highlightColor: Color
-
-    var body: some View {
-        value.enumerated().reduce(Text("")) { partial, pair in
-            partial + Text(String(pair.element))
-                .foregroundColor(highlighted.contains(pair.offset) ? highlightColor : baseColor)
-                .fontWeight(highlighted.contains(pair.offset) ? .bold : .regular)
-        }
     }
 }
