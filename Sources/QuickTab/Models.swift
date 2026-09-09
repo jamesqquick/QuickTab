@@ -78,7 +78,7 @@ enum WindowReconciler {
     }
 }
 
-enum WindowAction: Equatable {
+enum WindowAction: Equatable, Sendable {
     case close
     case minimize
     case hideApplication

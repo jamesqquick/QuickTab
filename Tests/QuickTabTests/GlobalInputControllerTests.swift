@@ -115,6 +115,19 @@ final class GlobalInputControllerTests: XCTestCase {
         XCTAssertFalse(handler.isSwitcherVisible)
     }
 
+    func testTapInterruptionRequestsFailOpenRecovery() async throws {
+        let controller = GlobalInputController()
+        let handler = InputHandlerSpy()
+        controller.handler = handler
+        let event = try makeKeyEvent(keyCode: 48, flags: .maskCommand)
+
+        XCTAssertFalse(controller.handle(type: .tapDisabledByTimeout, event: event))
+        XCTAssertEqual(handler.inputTapDisabledCount, 0)
+
+        await drainMainQueue()
+        XCTAssertEqual(handler.inputTapDisabledCount, 1)
+    }
+
     func testReconfigurationClearsCyclingSessionAndDismissesSwitcher() async throws {
         let controller = GlobalInputController()
         let handler = InputHandlerSpy()
@@ -464,6 +477,7 @@ private final class InputHandlerSpy: GlobalInputHandler {
     var commitCount = 0
     var dismissCount = 0
     var inputSessionResetCount = 0
+    var inputTapDisabledCount = 0
     var selectionOffsets: [Int] = []
     var pointerPressPoints: [CGPoint] = []
 
@@ -491,4 +505,5 @@ private final class InputHandlerSpy: GlobalInputHandler {
         inputSessionResetCount += 1
         dismissSwitcher()
     }
+    func inputTapDidDisable() { inputTapDisabledCount += 1 }
 }

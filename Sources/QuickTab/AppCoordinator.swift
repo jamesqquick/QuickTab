@@ -3,6 +3,52 @@ import Combine
 import Sparkle
 import SwiftUI
 
+struct TapRecoveryPolicy {
+    private(set) var recoveryRequested = false
+    private(set) var attemptCount = 0
+    private var recoveryAvailable = true
+
+    mutating func requestRecovery() -> Bool {
+        recoveryRequested = true
+        guard recoveryAvailable else { return false }
+        recoveryAvailable = false
+        return true
+    }
+
+    mutating func beginAttempt() {
+        recoveryRequested = false
+        attemptCount += 1
+    }
+
+    mutating func recordFailedAttempt() -> Bool {
+        guard attemptCount < 2 else {
+            reset()
+            return false
+        }
+        recoveryRequested = true
+        return true
+    }
+
+    mutating func finishCooldown() -> Bool {
+        if recoveryRequested {
+            guard attemptCount < 2 else {
+                reset()
+                return false
+            }
+            recoveryAvailable = false
+            return true
+        }
+        reset()
+        return false
+    }
+
+    mutating func reset() {
+        recoveryRequested = false
+        attemptCount = 0
+        recoveryAvailable = true
+    }
+}
+
 @MainActor
 final class AppCoordinator: NSObject, GlobalInputHandler {
     private let updaterController: SPUStandardUpdaterController
@@ -16,6 +62,10 @@ final class AppCoordinator: NSObject, GlobalInputHandler {
     private var settingsWindow: NSWindow?
     private var permissionWindow: NSWindow?
     private var inputReady = false
+    private var isRunning = false
+    private var tapRecoveryPolicy = TapRecoveryPolicy()
+    private var tapRecoveryWork: DispatchWorkItem?
+    private var tapRecoveryCooldownWork: DispatchWorkItem?
     private var cancellables: Set<AnyCancellable> = []
 
     var isSwitcherVisible: Bool { viewModel.isVisible }
@@ -26,6 +76,7 @@ final class AppCoordinator: NSObject, GlobalInputHandler {
     }
 
     func start() {
+        isRunning = true
         NSApp.applicationIconImage = AppIcon.make()
         _ = switcherPanel
         viewModel.onWillCommit = { [weak self] in self?.cancelSwitcherSession() }
@@ -46,10 +97,12 @@ final class AppCoordinator: NSObject, GlobalInputHandler {
             .sink { [weak self] hasPermission in
                 guard let self else { return }
                 if hasPermission {
+                    self.resetTapRecovery()
                     self.installInput()
                     self.permissionWindow?.close()
                     self.permissionWindow = nil
                 } else {
+                    self.resetTapRecovery()
                     self.input.uninstall()
                     self.inputReady = false
                     self.showPermissionWindow()
@@ -66,6 +119,8 @@ final class AppCoordinator: NSObject, GlobalInputHandler {
     }
 
     func stop() {
+        isRunning = false
+        resetTapRecovery()
         viewModel.dismiss()
         input.uninstall()
         repository.stop()
@@ -105,6 +160,38 @@ final class AppCoordinator: NSObject, GlobalInputHandler {
 
     func inputSessionDidReset() {
         viewModel.dismiss()
+    }
+
+    func inputTapDidDisable() {
+        inputReady = false
+        input.uninstall()
+        rebuildMenu()
+
+        guard tapRecoveryPolicy.requestRecovery() else { return }
+        scheduleTapRecovery(after: 0.5)
+    }
+
+    private func scheduleTapRecovery(after delay: TimeInterval) {
+        tapRecoveryWork?.cancel()
+        let workItem = DispatchWorkItem { [weak self] in
+            guard let self, self.isRunning else { return }
+            self.tapRecoveryWork = nil
+            guard self.repository.hasAccessibilityPermission else {
+                self.tapRecoveryPolicy.reset()
+                return
+            }
+            self.tapRecoveryPolicy.beginAttempt()
+            self.installInput()
+            guard self.inputReady else {
+                if self.tapRecoveryPolicy.recordFailedAttempt() {
+                    self.scheduleTapRecovery(after: 5)
+                }
+                return
+            }
+            self.scheduleTapRecoveryCooldown()
+        }
+        tapRecoveryWork = workItem
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: workItem)
     }
 
     private var visibilityPreferences: VisibilityPreferences {
@@ -224,8 +311,30 @@ final class AppCoordinator: NSObject, GlobalInputHandler {
     }
 
     @objc private func retryInput() {
+        resetTapRecovery()
         input.uninstall()
         installInput()
+    }
+
+    private func resetTapRecovery() {
+        tapRecoveryWork?.cancel()
+        tapRecoveryWork = nil
+        tapRecoveryCooldownWork?.cancel()
+        tapRecoveryCooldownWork = nil
+        tapRecoveryPolicy.reset()
+    }
+
+    private func scheduleTapRecoveryCooldown() {
+        tapRecoveryCooldownWork?.cancel()
+        let workItem = DispatchWorkItem { [weak self] in
+            guard let self, self.isRunning else { return }
+            self.tapRecoveryCooldownWork = nil
+            if self.tapRecoveryPolicy.finishCooldown() {
+                self.scheduleTapRecovery(after: 0.5)
+            }
+        }
+        tapRecoveryCooldownWork = workItem
+        DispatchQueue.main.asyncAfter(deadline: .now() + 30, execute: workItem)
     }
 
     private func showPermissionWindow() {

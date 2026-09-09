@@ -251,6 +251,131 @@ final class SwitcherViewModelTests: XCTestCase {
         XCTAssertTrue(repository.activatedWindowIDs.isEmpty)
     }
 
+    func testMinimizeDismissesBeforeSlowRepositoryActionReturns() {
+        let first = window("first")
+        let (viewModel, repository) = makeViewModel(windows: [first])
+        repository.performDelay = 0.2
+        viewModel.present(.recent, pointerPosition: .zero)
+
+        let startedAt = Date()
+        viewModel.perform(.minimize)
+
+        XCTAssertLessThan(Date().timeIntervalSince(startedAt), 0.05)
+        XCTAssertFalse(viewModel.isVisible)
+    }
+
+    func testFailedMinimizeDoesNotLeaveSwitcherVisible() async {
+        let first = window("first")
+        let (viewModel, repository) = makeViewModel(windows: [first])
+        repository.performResult = false
+        viewModel.present(.recent, pointerPosition: .zero)
+
+        viewModel.perform(.minimize)
+
+        XCTAssertFalse(viewModel.isVisible)
+        await drainMainQueue()
+        XCTAssertFalse(viewModel.isVisible)
+    }
+
+    func testMinimizeWithoutSelectionDismissesSwitcher() {
+        let first = window("first")
+        let (viewModel, repository) = makeViewModel(windows: [first])
+        viewModel.present(.recent, pointerPosition: .zero)
+        repository.setWindows([])
+
+        viewModel.perform(.minimize)
+
+        XCTAssertFalse(viewModel.isVisible)
+    }
+
+    func testNewPresentationIgnoresCompletionFromPreviousAction() async {
+        let first = window("first")
+        let second = window("second")
+        let (viewModel, repository) = makeViewModel(windows: [first, second])
+        repository.performDelay = 0.1
+        let actionStarted = expectation(description: "Action started")
+        repository.onPerform = { actionStarted.fulfill() }
+        viewModel.present(.recent, pointerPosition: .zero)
+
+        viewModel.perform(.close, keepVisible: true)
+        await fulfillment(of: [actionStarted], timeout: 1)
+        viewModel.present(.recent, pointerPosition: .zero)
+        try? await Task.sleep(for: .milliseconds(150))
+
+        XCTAssertTrue(viewModel.isVisible)
+        XCTAssertEqual(viewModel.results.map(\.item.id), [first.id, second.id])
+    }
+
+    func testKeepVisibleActionRejectsRepeatedInputAndPreservesNewSelection() async {
+        let first = window("first")
+        let second = window("second")
+        let (viewModel, repository) = makeViewModel(windows: [first, second])
+        repository.performDelay = 0.1
+        let actionStarted = expectation(description: "Action started")
+        repository.onPerform = { actionStarted.fulfill() }
+        viewModel.present(.recent, pointerPosition: .zero)
+
+        viewModel.perform(.close, keepVisible: true)
+        await fulfillment(of: [actionStarted], timeout: 1)
+        viewModel.moveSelection(by: 1)
+        viewModel.perform(.close, keepVisible: true)
+        try? await Task.sleep(for: .milliseconds(150))
+
+        XCTAssertEqual(repository.performedActions.count, 1)
+        XCTAssertEqual(repository.performedActions.first?.1, first.id)
+        XCTAssertEqual(viewModel.selectedWindowID, second.id)
+    }
+
+    func testCommandReleaseWaitsForCloseThenCommitsNextWindow() async throws {
+        let first = window("first")
+        let second = window("second")
+        let (viewModel, repository) = makeViewModel(windows: [first, second], activeWindowID: first.id)
+        let controller = GlobalInputController()
+        let handler = ViewModelInputHandler(viewModel: viewModel)
+        let actionStarted = expectation(description: "Close started")
+        let activated = expectation(description: "Next window activated")
+        repository.performDelay = 0.1
+        repository.removePerformedWindowOnSuccess = true
+        repository.onPerform = { actionStarted.fulfill() }
+        repository.onActivate = { activated.fulfill() }
+        controller.handler = handler
+        viewModel.onWillCommit = { controller.cancelActiveSwitcherSession() }
+
+        let tab = try XCTUnwrap(CGEvent(keyboardEventSource: nil, virtualKey: 48, keyDown: true))
+        tab.flags = .maskCommand
+        XCTAssertTrue(controller.handle(type: .keyDown, event: tab))
+        await drainMainQueue()
+        XCTAssertEqual(viewModel.selectedWindowID, second.id)
+
+        let close = try XCTUnwrap(CGEvent(keyboardEventSource: nil, virtualKey: 13, keyDown: true))
+        close.flags = .maskCommand
+        XCTAssertTrue(controller.handle(type: .keyDown, event: close))
+        await fulfillment(of: [actionStarted], timeout: 1)
+
+        let release = try XCTUnwrap(CGEvent(keyboardEventSource: nil, virtualKey: 55, keyDown: false))
+        XCTAssertFalse(controller.handle(type: .flagsChanged, event: release))
+        await fulfillment(of: [activated], timeout: 1)
+
+        XCTAssertEqual(repository.performedActions.first?.1, second.id)
+        XCTAssertEqual(repository.activatedWindowIDs, [first.id])
+        XCTAssertFalse(viewModel.isVisible)
+    }
+
+    func testSlowActivationDoesNotBlockMainActor() async {
+        let first = window("first")
+        let (viewModel, repository) = makeViewModel(windows: [first])
+        repository.activationDelay = 0.2
+        viewModel.present(.recent, pointerPosition: .zero)
+
+        let startedAt = Date()
+        viewModel.commit()
+        try? await Task.sleep(for: .milliseconds(60))
+
+        XCTAssertLessThan(Date().timeIntervalSince(startedAt), 0.12)
+        XCTAssertFalse(viewModel.isVisible)
+        viewModel.dismiss()
+    }
+
     func testCommitByIDAfterCommandCyclingPreventsReleaseRecommit() async throws {
         try await assertCommitByIDCancelsHeldCyclingSession(
             flags: .maskCommand,
@@ -334,7 +459,13 @@ private final class TestWindowRepository: WindowRepositoryProtocol {
     private let windowsSubject: CurrentValueSubject<[WindowItem], Never>
     var activeWindowID: WindowID?
     private(set) var activatedWindowIDs: [WindowID] = []
+    private(set) var performedActions: [(WindowAction, WindowID)] = []
     var onActivate: (() -> Void)?
+    var onPerform: (() -> Void)?
+    var activationDelay: TimeInterval = 0
+    var performDelay: TimeInterval = 0
+    var performResult = true
+    var removePerformedWindowOnSuccess = false
 
     var windowsPublisher: AnyPublisher<[WindowItem], Never> {
         windowsSubject.eraseToAnyPublisher()
@@ -349,13 +480,33 @@ private final class TestWindowRepository: WindowRepositoryProtocol {
         windowsSubject.send(windows)
     }
 
-    func activate(_ item: WindowItem) {
+    func activate(_ item: WindowItem) async {
+        if activationDelay > 0 {
+            try? await Task.sleep(for: .milliseconds(Int64(activationDelay * 1_000)))
+        }
+        guard !Task.isCancelled else { return }
         activatedWindowIDs.append(item.id)
         onActivate?()
     }
 
-    func perform(_ action: WindowAction, on item: WindowItem) -> Bool {
-        true
+    func perform(_ action: WindowAction, on item: WindowItem) async -> Bool {
+        performedActions.append((action, item.id))
+        onPerform?()
+        if performDelay > 0 {
+            try? await Task.sleep(for: .milliseconds(Int64(performDelay * 1_000)))
+        }
+        guard !Task.isCancelled, performResult else { return false }
+        if removePerformedWindowOnSuccess {
+            switch action {
+            case .close:
+                windowsSubject.send(windowsSubject.value.filter { $0.id != item.id })
+            case .quitApplication:
+                windowsSubject.send(windowsSubject.value.filter { $0.processID != item.processID })
+            case .minimize, .hideApplication:
+                break
+            }
+        }
+        return true
     }
 }
 
@@ -380,7 +531,10 @@ private final class ViewModelInputHandler: GlobalInputHandler {
         viewModel.commit()
     }
     func dismissSwitcher() { viewModel.dismiss() }
-    func performSwitcherAction(_ action: WindowAction) { viewModel.perform(action) }
+    func performSwitcherAction(_ action: WindowAction) {
+        viewModel.perform(action, keepVisible: action == .close || action == .quitApplication)
+    }
     func pointerPressed(at point: CGPoint) {}
     func inputSessionDidReset() { viewModel.dismiss() }
+    func inputTapDidDisable() {}
 }

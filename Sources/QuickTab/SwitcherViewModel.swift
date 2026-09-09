@@ -36,6 +36,8 @@ final class SwitcherViewModel: ObservableObject {
     private var cancellables: Set<AnyCancellable> = []
     private var pointerAnchor: CGPoint?
     private var pendingActivation: Task<Void, Never>?
+    private var pendingAction: Task<Void, Never>?
+    private var commitAfterPendingAction = false
     private let pointerJitterThreshold: CGFloat = 2
     var onVisibilityChange: ((Bool) -> Void)?
     var onWillCommit: (() -> Void)?
@@ -58,6 +60,9 @@ final class SwitcherViewModel: ObservableObject {
     ) {
         pendingActivation?.cancel()
         pendingActivation = nil
+        pendingAction?.cancel()
+        pendingAction = nil
+        commitAfterPendingAction = false
         self.mode = mode
         rebuildResults(preserveSelection: false)
         if advanceImmediately, results.count > 1 {
@@ -112,6 +117,14 @@ final class SwitcherViewModel: ObservableObject {
     private func commit(_ result: WindowResult?) {
         guard isVisible else { return }
         onWillCommit?()
+        guard pendingAction == nil else {
+            commitAfterPendingAction = true
+            return
+        }
+        commitNow(result)
+    }
+
+    private func commitNow(_ result: WindowResult?) {
         guard let result else {
             dismiss()
             return
@@ -121,34 +134,45 @@ final class SwitcherViewModel: ObservableObject {
         pendingActivation = Task { [repository] in
             try? await Task.sleep(for: .milliseconds(40))
             guard !Task.isCancelled else { return }
-            repository.activate(result.item)
+            await repository.activate(result.item)
         }
     }
 
     func dismiss() {
         pendingActivation?.cancel()
         pendingActivation = nil
+        pendingAction?.cancel()
+        pendingAction = nil
+        commitAfterPendingAction = false
         guard isVisible else { return }
         isVisible = false
         onVisibilityChange?(false)
     }
 
     func perform(_ action: WindowAction, keepVisible: Bool = false) {
-        guard let result = selectedResult else { return }
-        let adjacentIndex = selectedIndex
-        guard repository.perform(action, on: result.item) else { return }
-        if keepVisible {
-            switch action {
-            case .close:
-                allWindows.removeAll { $0.id == result.item.id }
-            case .quitApplication:
-                allWindows.removeAll { $0.processID == result.item.processID }
-            case .minimize, .hideApplication:
-                break
+        guard let result = selectedResult else {
+            if !keepVisible {
+                dismiss()
             }
-            rebuildResults(preserveSelection: false, preferredIndex: adjacentIndex)
-        } else {
+            return
+        }
+        guard pendingAction == nil else {
+            if !keepVisible {
+                dismiss()
+            }
+            return
+        }
+        if !keepVisible {
             dismiss()
+        }
+        pendingAction = Task { [weak self, repository] in
+            _ = await repository.perform(action, on: result.item)
+            guard !Task.isCancelled, let self else { return }
+            self.pendingAction = nil
+            if self.commitAfterPendingAction {
+                self.commitAfterPendingAction = false
+                self.commitNow(self.selectedResult)
+            }
         }
     }
 

@@ -1,5 +1,13 @@
 import AppKit
 @preconcurrency import CoreGraphics
+import OSLog
+
+private extension Logger {
+    static let globalInput = Logger(
+        subsystem: Bundle.main.bundleIdentifier ?? "com.jamesqquick.QuickTab",
+        category: "GlobalInput"
+    )
+}
 
 struct GlobalInputConfiguration {
     var replaceCommandTab = true
@@ -16,6 +24,7 @@ protocol GlobalInputHandler: AnyObject {
     func performSwitcherAction(_ action: WindowAction)
     func pointerPressed(at point: CGPoint)
     func inputSessionDidReset()
+    func inputTapDidDisable()
 }
 
 @MainActor
@@ -33,7 +42,10 @@ final class GlobalInputController {
     private var endingActionKeyCode: UInt16?
     private let mouseLocation: () -> CGPoint
 
-    var isInstalled: Bool { eventTap != nil }
+    var isInstalled: Bool {
+        guard let eventTap else { return false }
+        return CGEvent.tapIsEnabled(tap: eventTap)
+    }
 
     init(
         mouseLocation: @escaping () -> CGPoint = { NSEvent.mouseLocation }
@@ -43,6 +55,7 @@ final class GlobalInputController {
 
     func install() -> Bool {
         if isInstalled { return true }
+        tearDownTap()
         let types: [CGEventType] = [
             .keyDown,
             .keyUp,
@@ -72,21 +85,23 @@ final class GlobalInputController {
         runLoopSource = source
         CFRunLoopAddSource(CFRunLoopGetMain(), source, .commonModes)
         CGEvent.tapEnable(tap: tap, enable: true)
+        guard isInstalled else {
+            tearDownTap()
+            return false
+        }
         return true
     }
 
     func uninstall() {
-        if let eventTap { CGEvent.tapEnable(tap: eventTap, enable: false) }
-        if let runLoopSource { CFRunLoopRemoveSource(CFRunLoopGetMain(), runLoopSource, .commonModes) }
-        runLoopSource = nil
-        eventTap = nil
+        tearDownTap()
         resetActiveSwitcherSession(notifyHandler: true)
     }
 
     func handle(type: CGEventType, event: CGEvent) -> Bool {
         if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
+            Logger.globalInput.error("Global input tap was disabled; leaving it disabled until controlled recovery")
             resetActiveSwitcherSession(notifyHandler: true)
-            if let eventTap { CGEvent.tapEnable(tap: eventTap, enable: true) }
+            enqueueHandlerWork { $0.inputTapDidDisable() }
             return false
         }
 
@@ -253,6 +268,19 @@ final class GlobalInputController {
             guard let handler = self?.handler else { return }
             operation(handler)
         }
+    }
+
+    private func tearDownTap() {
+        if let eventTap {
+            CGEvent.tapEnable(tap: eventTap, enable: false)
+            CFMachPortInvalidate(eventTap)
+        }
+        if let runLoopSource {
+            CFRunLoopRemoveSource(CFRunLoopGetMain(), runLoopSource, .commonModes)
+            CFRunLoopSourceInvalidate(runLoopSource)
+        }
+        runLoopSource = nil
+        eventTap = nil
     }
 
 }
