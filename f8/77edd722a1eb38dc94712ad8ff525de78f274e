@@ -1,0 +1,19 @@
+Tests/QuickTabTests/SwitcherViewModelTests.swift
+  s_ddb13f9721d65f::t_81057ca2c0d1af 367,374
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "f877edd722a1eb38dc94712ad8ff525de78f274e",
+  "prompts": {},
+  "sessions": {
+    "s_ddb13f9721d65f": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_f96f568d0ffeNWBAGil14ZlpdR",
+        "model": "gpt-5.6-luna"
+      },
+      "human_author": "James Quick <jquick@cloudflare.com>"
+    }
+  }
+}
